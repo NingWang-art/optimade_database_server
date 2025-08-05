@@ -1,5 +1,4 @@
 import argparse
-import logging
 import json
 import os
 from typing import List
@@ -9,8 +8,7 @@ from optimade.adapters.structures import Structure
 import jmespath
 from pymatgen.core import Composition
 
-
-from dp.agent.server import CalculationMCPServer
+from mcp.server.fastmcp import FastMCP
 
 # === CONFIG ===
 DATA_DIR = "materials_data"
@@ -19,7 +17,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 # === ARG PARSING ===
 def parse_args():
     parser = argparse.ArgumentParser(description="OPTIMADE Materials Data MCP Server")
-    parser.add_argument('--port', type=int, default=50001, help='Server port (default: 50001)')
+    parser.add_argument('--port', type=int, default=50002, help='Server port (default: 50002)')
     parser.add_argument('--host', default='0.0.0.0', help='Server host (default: 0.0.0.0)')
     parser.add_argument('--log-level', default='INFO', 
                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
@@ -28,15 +26,14 @@ def parse_args():
         args = parser.parse_args()
     except SystemExit:
         class Args:
-            port = 50001
+            port = 50002
             host = '0.0.0.0'
             log_level = 'INFO'
         args = Args()
     return args
 
-
 args = parse_args()
-mcp = CalculationMCPServer("OptimadeServer", port=args.port, host=args.host)
+mcp = FastMCP("materials_data", port=args.port, host=args.host)
 
 # === UTIL FUNCTION ===
 def hill_formula_filter(formula: str) -> str:
@@ -137,5 +134,4 @@ def fetch_structures_by_elements(elements: List[str], max_results: int = 2, as_c
 
 # === RUN SERVER ===
 if __name__ == "__main__":
-    logging.info("Starting Unified MCP Server with all tools...")
     mcp.run(transport="sse")
