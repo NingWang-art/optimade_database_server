@@ -6,6 +6,7 @@ import tarfile
 import time
 from pathlib import Path
 from typing import Dict, List, Tuple
+from dotenv import load_dotenv
 
 import aiofiles
 import aiohttp
@@ -14,6 +15,8 @@ from oss2.credentials import EnvironmentVariableCredentialsProvider
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+load_dotenv()
+
 
 
 async def extract_and_upload_files(tgz_url: str, temp_dir: str = "./tmp") -> dict:
@@ -116,3 +119,12 @@ async def find_cif_json_files(directory: Path) -> List[Path]:
         return list(directory.rglob("*.cif")) + list(directory.rglob("*.json"))
 
     return await loop.run_in_executor(None, _sync_find)
+
+
+if __name__ == "__main__":
+    result = asyncio.run(
+        extract_and_upload_files(
+            tgz_url='https://bohrium.oss-cn-zhangjiakou.aliyuncs.com/907139/912472/store/a510ee75-3511-488c-a3d1-7660d5db2436/outputs/output_dir/FeO_20250806_144325.tgz'
+        )
+    )
+    print(result)

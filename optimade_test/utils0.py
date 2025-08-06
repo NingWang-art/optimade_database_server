@@ -11,6 +11,7 @@ import traceback
 import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from dotenv import load_dotenv
 
 import aiofiles
 import aiohttp
@@ -19,7 +20,7 @@ from oss2.credentials import EnvironmentVariableCredentialsProvider
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
+load_dotenv()
 
 async def extract_convert_and_upload(tgz_url: str, temp_dir: str = "./tmp") -> dict:
     """
