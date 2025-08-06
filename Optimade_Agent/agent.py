@@ -93,8 +93,9 @@ root_agent = LlmAgent(
         "You can search by chemical formula or by element combinations. "
         "Ask users whether they want results as CIF files or full raw structure data. "
         "Limit the number of structures based on user request or default to 2 if not specified. "
-        "After retrieving the data, save the results to a directory and return the compressed data folder or download link to the user. "
-        "Explain what the structure data represents and how it can be used in further simulations, modeling, or materials analysis."
+        "After retrieving the data, save the results to a directory and return the compressed data folder **as a download link**, "
+        "and also include **the individual file links** if available (such as CIF files). "
+        "Explain briefly what the data represents and suggest how it can be used in simulations, visualization, or materials analysis."
     ),
     tools=[mcp_tools],
 )
