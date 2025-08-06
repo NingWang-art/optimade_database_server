@@ -38,6 +38,7 @@ def parse_args():
 
 # === RESULT TYPE ===
 class FetchResult(TypedDict):
+    """Result data of fetching"""
     output_dir: Path
     message: str
 
@@ -89,7 +90,6 @@ def fetch_structures_by_formula(formula: str, max_results: int = 2, as_cif: bool
 
     return {
         "output_dir": output_folder,
-        "message": f"Saved structures to folder: {output_folder}"
     }
 
 
@@ -129,7 +129,6 @@ def fetch_structures_by_elements(elements: List[str], max_results: int = 2, as_c
 
     return {
         "output_dir": output_folder,
-        "message": f"Saved structures to folder: {output_folder}"
     }
 
 
