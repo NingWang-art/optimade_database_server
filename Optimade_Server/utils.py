@@ -21,7 +21,7 @@ def hill_formula_filter(formula: str) -> str:
 
 def upload_file_to_oss(file_path: Path) -> str:
     """
-    上传文件至 OSS，返回公开访问链接
+    上传文件至 OSS, 返回公开访问链接
     """
     auth = oss2.ProviderAuth(EnvironmentVariableCredentialsProvider())
     endpoint = os.environ["OSS_ENDPOINT"]
