@@ -60,8 +60,23 @@ def fetch_structures_by_formula(
     providers: Optional[List[str]] = None
 ) -> FetchResult:
     """
-    Fetch structures by formula and save as CIF or JSON.
-    Optionally specify which databases to use.
+    Fetch structures from OPTIMADE databases by chemical formula.
+
+    Parameters
+    ----------
+    formula : str
+        The chemical formula to search for (e.g., "TiO2").
+    max_results : int, optional
+        Maximum number of structures to fetch per provider.
+    as_cif : bool, optional
+        Whether to save structures as CIF files. If False, saves as JSON.
+    providers : list of str, optional
+        Specific providers to query. If None, uses all default providers.
+
+    Returns
+    -------
+    FetchResult
+        A dictionary with the output directory path.
     """
     filter_str = hill_formula_filter(formula)
     used_providers = set(providers) if providers else DEFAULT_PROVIDERS
@@ -90,8 +105,23 @@ def fetch_structures_by_elements(
     providers: Optional[List[str]] = None
 ) -> FetchResult:
     """
-    Fetch structures by element list and save as CIF or JSON.
-    Optionally specify which databases to use.
+    Fetch structures from OPTIMADE databases by a list of elements.
+
+    Parameters
+    ----------
+    elements : list of str
+        Elements to include in search (e.g., ["Mg", "O", "Al"]).
+    max_results : int, optional
+        Max number of structures to fetch per provider.
+    as_cif : bool, optional
+        Save results as CIF (True) or JSON (False).
+    providers : list of str, optional
+        Specific OPTIMADE providers to query. Uses default if not provided.
+
+    Returns
+    -------
+    FetchResult
+        A dictionary with the output directory path.
     """
     element_filter = 'elements HAS ALL ' + ', '.join(f'"{e}"' for e in elements)
     used_providers = set(providers) if providers else DEFAULT_PROVIDERS
