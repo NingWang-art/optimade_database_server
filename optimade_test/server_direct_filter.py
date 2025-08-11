@@ -7,6 +7,8 @@ from datetime import datetime
 import hashlib
 
 from optimade.client import OptimadeClient
+from dp.agent.server import CalculationMCPServer
+
 from utils import save_structures  # must accept (results, output_folder, max_results, as_cif)
 
 # === CONFIG ===
@@ -18,6 +20,24 @@ DEFAULT_PROVIDERS = {
     "odbx", "omdb", "oqmd", "jarvis"
 }
 
+# === ARG PARSING ===
+def parse_args():
+    parser = argparse.ArgumentParser(description="OPTIMADE Materials Data MCP Server (raw filter mode)")
+    parser.add_argument('--port', type=int, default=50001, help='Server port (default: 50001)')
+    parser.add_argument('--host', default='0.0.0.0', help='Server host (default: 0.0.0.0)')
+    parser.add_argument('--log-level', default='INFO',
+                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                        help='Logging level (default: INFO)')
+    try:
+        return parser.parse_args()
+    except SystemExit:
+        class Args:
+            port = 50001
+            host = '0.0.0.0'
+            log_level = 'INFO'
+        return Args()
+
+# === RESULT TYPE ===
 Format = Literal["cif", "json"]
 
 class FetchResult(TypedDict):
@@ -27,14 +47,49 @@ class FetchResult(TypedDict):
     filter: str
     warnings: List[str]
 
+# === MCP SERVER ===
+args = parse_args()
+logging.basicConfig(level=args.log_level)
+mcp = CalculationMCPServer("OptimadeServer", port=args.port, host=args.host)
+
+# === TOOL: raw filter fetch ===
+@mcp.tool()
 def fetch_structures_with_filter(
-    filter_str: str,
+    filter: str,
     as_format: Format = "cif",
     max_results_per_provider: int = 2,
     providers: Optional[List[str]] = None,
 ) -> FetchResult:
-    """Fetch via RAW OPTIMADE filter (elements-only for first try)."""
-    filt = (filter_str or "").strip()
+    """
+    Fetch structures using a RAW OPTIMADE filter string (elements-only for first try).
+
+    Parameters
+    ----------
+    filter : str
+        An OPTIMADE filter expression (use elements-only now). Examples:
+        - elements HAS ALL "Al","O","Mg"
+        - elements HAS ANY "Al","O"
+        - elements HAS ONLY "Si","O"
+    as_format : {"cif","json"}, optional
+        Output format (default: "cif").
+    max_results_per_provider : int, optional
+        Max results per provider (default: 2).
+    providers : list[str], optional
+        Provider keys to query. Uses default set if omitted:
+        {"mp","oqmd","jarvis","nmd","mpds","cmr","alexandria","omdb","odbx"}.
+
+    Returns
+    -------
+    FetchResult
+        {
+          "output_dir": <Path>,
+          "files": [<saved files>],
+          "providers_used": [<providers_seen>],
+          "filter": "<the filter you sent>",
+          "warnings": [<messages>]
+        }
+    """
+    filt = (filter or "").strip()
     if not filt:
         msg = "[raw] empty filter string"
         logging.error(msg)
@@ -60,6 +115,7 @@ def fetch_structures_with_filter(
             "warnings": [msg],
         }
 
+    # timestamped folder + short hash of filter for traceability
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     short = hashlib.sha1(filt.encode("utf-8")).hexdigest()[:8]
     out_folder = BASE_OUTPUT_DIR / f"rawfilter_{ts}_{short}"
@@ -71,6 +127,7 @@ def fetch_structures_with_filter(
         as_cif=(as_format == "cif"),
     )
 
+    # manifest (handy for downstream)
     manifest = {
         "filter": filt,
         "providers_requested": sorted(list(used_providers)),
@@ -90,37 +147,7 @@ def fetch_structures_with_filter(
         "warnings": warns,
     }
 
-# ---------- CLI TEST HARNESS (elements-only) ----------
-def main():
-    logging.basicConfig(level="INFO")
-
-    # Demo A: HAS ALL (no LENGTH/npd/formula)
-    resA = fetch_structures_with_filter(
-        'elements HAS ALL "Al","O","Mg"',
-        as_format="cif",
-        max_results_per_provider=2
-    )
-    print("\n[Demo A] HAS ALL -> CIF")
-    print(json.dumps(resA, indent=2, default=str))
-
-    # Demo B: HAS ANY
-    resB = fetch_structures_with_filter(
-        'elements HAS ANY "Al","O"',
-        as_format="json",
-        max_results_per_provider=1
-    )
-    print("\n[Demo B] HAS ANY -> JSON")
-    print(json.dumps(resB, indent=2, default=str))
-
-    # Demo C: HAS ONLY (exact element set, still no LENGTH)
-    resC = fetch_structures_with_filter(
-        'elements HAS ONLY "Si","O"',
-        as_format="cif",
-        max_results_per_provider=1,
-        providers=["mp", "jarvis"]  # show provider override
-    )
-    print("\n[Demo C] HAS ONLY (Si,O) -> CIF from MP & JARVIS")
-    print(json.dumps(resC, indent=2, default=str))
-
+# === RUN MCP SERVER ===
 if __name__ == "__main__":
-    main()
+    logging.info("Starting Optimade MCP Server (raw filter mode)…")
+    mcp.run(transport="sse")
