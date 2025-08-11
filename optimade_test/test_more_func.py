@@ -1,20 +1,14 @@
 import argparse
 import logging
 import json
-from typing import List, Optional, TypedDict, Literal, Tuple, Dict
+from typing import List, Optional, TypedDict, Literal
 from pathlib import Path
 from datetime import datetime
-from urllib.parse import urlparse
 
 from pydantic import BaseModel, ValidationError
 from optimade.client import OptimadeClient
-from optimade.adapters.structures import Structure
 
-from dp.agent.server import CalculationMCPServer
-
-from utils import *
-
-# If you have hill_formula_filter etc., we don't use them here (elements-only test)
+from utils import save_structures  # make sure utils.py is in the same dir
 
 # === CONFIG ===
 BASE_OUTPUT_DIR = Path("materials_data")
@@ -25,23 +19,6 @@ DEFAULT_PROVIDERS = {
     "odbx", "omdb", "oqmd", "jarvis"
 }
 
-# === ARG PARSING ===
-def parse_args():
-    parser = argparse.ArgumentParser(description="OPTIMADE Materials Data MCP Server (Elements-only test)")
-    parser.add_argument('--port', type=int, default=50001, help='Server port (default: 50001)')
-    parser.add_argument('--host', default='0.0.0.0', help='Server host (default: 0.0.0.0)')
-    parser.add_argument('--log-level', default='INFO',
-                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-                        help='Logging level (default: INFO)')
-    try:
-        return parser.parse_args()
-    except SystemExit:
-        class Args:
-            port = 50001
-            host = '0.0.0.0'
-            log_level = 'INFO'
-        return Args()
-
 # === RESULT TYPE ===
 class FetchResult(TypedDict):
     output_dir: Path
@@ -50,24 +27,19 @@ class FetchResult(TypedDict):
     filter: str
     warnings: List[str]
 
-# === MCP SERVER ===
-args = parse_args()
-logging.basicConfig(level=args.log_level)
-mcp = CalculationMCPServer("OptimadeServer", port=args.port, host=args.host)
-
 # === Query schema (elements-only) ===
 Format = Literal["cif", "json"]
 
 class QueryParams(BaseModel):
-    elements_all: Optional[List[str]] = None   # elements HAS ALL
-    elements_any: Optional[List[str]] = None   # elements HAS ANY
-    elements_only: Optional[List[str]] = None  # elements HAS ONLY
+    elements_all: Optional[List[str]] = None
+    elements_any: Optional[List[str]] = None
+    elements_only: Optional[List[str]] = None
 
-    as_format: Format = "cif"                  # "cif" or "json"
+    as_format: Format = "cif"
     max_results_per_provider: int = 2
     providers: Optional[List[str]] = None
 
-# === Filter builder (elements-only) ===
+# === Filter builder ===
 def build_filter(q: "QueryParams") -> str:
     parts = []
     if q.elements_all:
@@ -76,41 +48,10 @@ def build_filter(q: "QueryParams") -> str:
         parts.append('elements HAS ANY ' + ', '.join(f'"{e}"' for e in q.elements_any))
     if q.elements_only:
         parts.append('elements HAS ONLY ' + ', '.join(f'"{e}"' for e in q.elements_only))
-    return " AND ".join(parts) if parts else 'elements HAS ANY "Si"'  # harmless default
+    return " AND ".join(parts) if parts else 'elements HAS ANY "Si"'
 
-
-
-# === TOOL: elements-only advanced ===
-@mcp.tool()
+# === Retrieval function ===
 def fetch_structures_advanced(query: dict) -> FetchResult:
-    """
-    Advanced OPTIMADE fetch (elements-only test).
-
-    Parameters
-    ----------
-    query : dict
-        JSON object with any of:
-        {
-          "elements_all": ["Al","O","Mg"],   # elements HAS ALL
-          "elements_any": ["Si","O"],        # elements HAS ANY
-          "elements_only": ["C"],            # elements HAS ONLY
-          "as_format": "cif",                # "cif" or "json"
-          "max_results_per_provider": 2,     # int
-          "providers": ["mp","jarvis"]       # optional, list of provider keys
-        }
-
-    Returns
-    -------
-    FetchResult
-        {
-          "output_dir": <Path>,
-          "files": [<saved files>],
-          "providers_used": [<providers>],
-          "filter": "<final filter>",
-          "warnings": [<messages>]
-        }
-    """
-    # Validate query
     try:
         q = QueryParams(**query)
     except ValidationError as e:
@@ -123,12 +64,10 @@ def fetch_structures_advanced(query: dict) -> FetchResult:
             "warnings": [f"validation_error: {e}"],
         }
 
-    # Build filter + providers
     filter_str = build_filter(q)
     used_providers = set(q.providers) if q.providers else DEFAULT_PROVIDERS
     logging.info(f"[adv] providers={used_providers} filter={filter_str}")
 
-    # Execute query
     try:
         client = OptimadeClient(
             include_providers=used_providers,
@@ -146,7 +85,6 @@ def fetch_structures_advanced(query: dict) -> FetchResult:
             "warnings": [msg],
         }
 
-    # Save
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_folder = BASE_OUTPUT_DIR / f"elements_query_{ts}"
     files, warns, providers_seen = save_structures(
@@ -161,7 +99,34 @@ def fetch_structures_advanced(query: dict) -> FetchResult:
         "warnings": warns,
     }
 
-# === RUN MCP SERVER ===
+# === MAIN for testing ===
 if __name__ == "__main__":
-    logging.info("Starting Optimade MCP Server (elements-only)…")
-    mcp.run(transport="sse")
+    logging.basicConfig(level="INFO")
+
+    # Demo 1: elements_all
+    res1 = fetch_structures_advanced({
+        "elements_all": ["Al", "O", "Mg"],
+        "as_format": "cif",
+        "max_results_per_provider": 3
+    })
+    print("\n[Demo 1] elements_all=Al,O,Mg → CIF")
+    print(json.dumps(res1, indent=2, default=str))
+
+    # Demo 2: elements_any
+    res2 = fetch_structures_advanced({
+        "elements_any": ["Al", "O"],
+        "as_format": "json",
+        "max_results_per_provider": 1
+    })
+    print("\n[Demo 2] elements_any=Al,O → JSON")
+    print(json.dumps(res2, indent=2, default=str))
+
+    # Demo 3: elements_only, custom providers
+    res3 = fetch_structures_advanced({
+        "elements_only": ["C"],
+        "as_format": "cif",
+        "providers": ["mp", "jarvis"],
+        "max_results_per_provider": 2
+    })
+    print("\n[Demo 3] elements_only=C → CIF from MP & JARVIS")
+    print(json.dumps(res3, indent=2, default=str))

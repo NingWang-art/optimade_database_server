@@ -1,16 +1,19 @@
 import argparse
 import logging
-from typing import List, Optional, TypedDict
+import json
+from typing import List, Optional, TypedDict, Literal, Tuple, Dict
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import urlparse
 
+from pydantic import BaseModel, ValidationError
 from optimade.client import OptimadeClient
 from optimade.adapters.structures import Structure
 
 from dp.agent.server import CalculationMCPServer
-
 from utils import *
+
+# If you have hill_formula_filter etc., we don't use them here (elements-only test)
 
 # === CONFIG ===
 BASE_OUTPUT_DIR = Path("materials_data")
@@ -21,10 +24,9 @@ DEFAULT_PROVIDERS = {
     "odbx", "omdb", "oqmd", "jarvis"
 }
 
-
 # === ARG PARSING ===
 def parse_args():
-    parser = argparse.ArgumentParser(description="OPTIMADE Materials Data MCP Server")
+    parser = argparse.ArgumentParser(description="OPTIMADE Materials Data MCP Server (Elements-only test)")
     parser.add_argument('--port', type=int, default=50001, help='Server port (default: 50001)')
     parser.add_argument('--host', default='0.0.0.0', help='Server host (default: 0.0.0.0)')
     parser.add_argument('--log-level', default='INFO',
@@ -39,107 +41,125 @@ def parse_args():
             log_level = 'INFO'
         return Args()
 
-
 # === RESULT TYPE ===
 class FetchResult(TypedDict):
     output_dir: Path
-
+    files: List[str]
+    providers_used: List[str]
+    filter: str
+    warnings: List[str]
 
 # === MCP SERVER ===
 args = parse_args()
 logging.basicConfig(level=args.log_level)
 mcp = CalculationMCPServer("OptimadeServer", port=args.port, host=args.host)
 
+# === Query schema (elements-only) ===
+Format = Literal["cif", "json"]
 
-# === TOOL 1 ===
-@mcp.tool()
-def fetch_structures_by_formula(
-    formula: str,
-    max_results: int = 2,
-    as_cif: bool = True,
+class QueryParams(BaseModel):
+    elements_all: Optional[List[str]] = None   # elements HAS ALL
+    elements_any: Optional[List[str]] = None   # elements HAS ANY
+    elements_only: Optional[List[str]] = None  # elements HAS ONLY
+
+    as_format: Format = "cif"                  # "cif" or "json"
+    max_results_per_provider: int = 2
     providers: Optional[List[str]] = None
-) -> FetchResult:
-    """
-    Fetch structures by formula and save as CIF or JSON.
-    Optionally specify which databases to use.
-    """
-    filter_str = hill_formula_filter(formula)
-    used_providers = set(providers) if providers else DEFAULT_PROVIDERS
-    logging.info(f"Fetching structures for formula '{formula}' using providers: {used_providers}")
-    logging.debug(f"Using filter string: {filter_str}")
 
+# === Filter builder (elements-only) ===
+def build_filter(q: "QueryParams") -> str:
+    parts = []
+    if q.elements_all:
+        parts.append('elements HAS ALL ' + ', '.join(f'"{e}"' for e in q.elements_all))
+    if q.elements_any:
+        parts.append('elements HAS ANY ' + ', '.join(f'"{e}"' for e in q.elements_any))
+    if q.elements_only:
+        parts.append('elements HAS ONLY ' + ', '.join(f'"{e}"' for e in q.elements_only))
+    return " AND ".join(parts) if parts else 'elements HAS ANY "Si"'  # harmless default
+
+
+# === TOOL: elements-only advanced ===
+@mcp.tool()
+def fetch_structures_advanced(query: dict) -> FetchResult:
+    """
+    Advanced OPTIMADE fetch (elements-only test).
+
+    Parameters
+    ----------
+    query : dict
+        JSON object with any of:
+        {
+          "elements_all": ["Al","O","Mg"],   # elements HAS ALL
+          "elements_any": ["Si","O"],        # elements HAS ANY
+          "elements_only": ["C"],            # elements HAS ONLY
+          "as_format": "cif",                # "cif" or "json"
+          "max_results_per_provider": 2,     # int
+          "providers": ["mp","jarvis"]       # optional, list of provider keys
+        }
+
+    Returns
+    -------
+    FetchResult
+        {
+          "output_dir": <Path>,
+          "files": [<saved files>],
+          "providers_used": [<providers>],
+          "filter": "<final filter>",
+          "warnings": [<messages>]
+        }
+    """
+    # Validate query
     try:
-        client = OptimadeClient(include_providers=used_providers, max_results_per_provider=max_results)
+        q = QueryParams(**query)
+    except ValidationError as e:
+        logging.error(f"[adv] Query validation failed: {e}")
+        return {
+            "output_dir": Path(),
+            "files": [],
+            "providers_used": [],
+            "filter": "",
+            "warnings": [f"validation_error: {e}"],
+        }
+
+    # Build filter + providers
+    filter_str = build_filter(q)
+    used_providers = set(q.providers) if q.providers else DEFAULT_PROVIDERS
+    logging.info(f"[adv] providers={used_providers} filter={filter_str}")
+
+    # Execute query
+    try:
+        client = OptimadeClient(
+            include_providers=used_providers,
+            max_results_per_provider=q.max_results_per_provider
+        )
         results = client.get(filter=filter_str)
     except Exception as e:
-        logging.error(f"Failed to fetch structures by formula '{formula}': {e}")
-        return {"output_dir": Path()}
+        msg = f"[adv] fetch failed: {e}"
+        logging.error(msg)
+        return {
+            "output_dir": Path(),
+            "files": [],
+            "providers_used": sorted(list(used_providers)),
+            "filter": filter_str,
+            "warnings": [msg],
+        }
 
-    output_folder = BASE_OUTPUT_DIR / f"formula_{formula}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    save_structures(results, output_folder, max_results, as_cif)
+    # Save
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_folder = BASE_OUTPUT_DIR / f"elements_query_{ts}"
+    files, warns, providers_seen = save_structures(
+        results, out_folder, q.max_results_per_provider, as_cif=(q.as_format == "cif")
+    )
 
-    return {"output_dir": output_folder}
-
-
-# === TOOL 2 ===
-@mcp.tool()
-def fetch_structures_by_elements(
-    elements: List[str],
-    max_results: int = 2,
-    as_cif: bool = True,
-    providers: Optional[List[str]] = None
-) -> FetchResult:
-    """
-    Fetch structures by element list and save as CIF or JSON.
-    Optionally specify which databases to use.
-    """
-    element_filter = 'elements HAS ALL ' + ', '.join(f'"{e}"' for e in elements)
-    used_providers = set(providers) if providers else DEFAULT_PROVIDERS
-    logging.info(f"Fetching structures for elements {elements} using providers: {used_providers}")
-    logging.debug(f"Using filter string: {element_filter}")
-
-    try:
-        client = OptimadeClient(include_providers=used_providers, max_results_per_provider=max_results)
-        results = client.get(filter=element_filter)
-    except Exception as e:
-        logging.error(f"Failed to fetch structures for elements {elements}: {e}")
-        return {"output_dir": Path()}
-
-    folder_name = "elements_" + "_".join(elements) + "_" + datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_folder = BASE_OUTPUT_DIR / folder_name
-    save_structures(results, output_folder, max_results, as_cif)
-
-    return {"output_dir": output_folder}
-
+    return {
+        "output_dir": out_folder,
+        "files": files,
+        "providers_used": sorted(list(set(providers_seen))),
+        "filter": filter_str,
+        "warnings": warns,
+    }
 
 # === RUN MCP SERVER ===
 if __name__ == "__main__":
-
-    print("\n=== Testing fetch_structures_by_formula ===")
-    result = fetch_structures_by_formula(
-        formula="TiO2",
-        max_results=2,
-        as_cif=True,
-        providers=["mp", "jarvis"]  # optional: try None to use all providers
-    )
-    print("Output saved in:", result["output_dir"])
-
-    print("\n=== Testing fetch_structures_by_elements ===")
-    result = fetch_structures_by_elements(
-        elements=["Mg", "Al", "O"],
-        max_results=3,
-        as_cif=False,
-        providers=["alexandria", "cmr", "mp", "mpds", "nmd"]
-    )
-    print("Output saved in:", result["output_dir"])
-
-    print("\n=== Testing fetch_structures_by_formula ===")
-    result = fetch_structures_by_formula(
-        formula="OFe",
-        max_results=1,
-        as_cif=True,
-    )
-    print("Output saved in:", result["output_dir"])
-
-    logging.info("Starting Optimade MCP Server...")
+    logging.info("Starting Optimade MCP Server (elements-only)…")
     mcp.run(transport="sse")
