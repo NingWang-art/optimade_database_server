@@ -52,7 +52,7 @@ args = parse_args()
 logging.basicConfig(level=args.log_level)
 mcp = CalculationMCPServer("OptimadeServer", port=args.port, host=args.host)
 
-# === TOOL: raw filter fetch ===
+# === TOOL: RAW filter fetch ===
 @mcp.tool()
 def fetch_structures_with_filter(
     filter: str,
@@ -61,40 +61,58 @@ def fetch_structures_with_filter(
     providers: Optional[List[str]] = None,
 ) -> FetchResult:
     """
-    Fetch structures using a RAW OPTIMADE filter string (elements-only for first try).
+    Fetch crystal structures from OPTIMADE databases using a raw filter string.
+
+    This function passes the provided OPTIMADE filter directly to all chosen providers
+    (or the default set if none are specified). The filter can use any supported 
+    OPTIMADE properties and logical operators, e.g.:
+        - elements HAS ALL "Al","O","Mg"
+        - elements HAS ONLY "Si","O"
+        - elements HAS ALL "Al","O","Mg" AND nelements=3
+        - chemical_formula_reduced="O2Si"
+        - chemical_formula_descriptive CONTAINS "H2O"
+        - chemical_formula_anonymous="A2B" AND NOT (elements HAS ANY "Na")
 
     Parameters
     ----------
     filter : str
-        An OPTIMADE filter expression (use elements-only now). Examples:
-        - elements HAS ALL "Al","O","Mg"
-        - elements HAS ANY "Al","O"
-        - elements HAS ONLY "Si","O"
+        An OPTIMADE filter expression. Supports all valid syntax:
+        - Property filters (elements, nelements, chemical_formula_reduced, etc.)
+        - Logical operators: AND, OR, NOT (parentheses for grouping)
+        - String equality/contains and numeric comparisons
     as_format : {"cif","json"}, optional
-        Output format (default: "cif").
+        Output format of saved structures.
+        "cif"  → Crystallographic Information File (default)
+        "json" → Raw OPTIMADE structure JSON
     max_results_per_provider : int, optional
-        Max results per provider (default: 2).
+        Maximum number of results to retrieve from each provider (default: 2).
     providers : list[str], optional
-        Provider keys to query. Uses default set if omitted:
-        {"mp","oqmd","jarvis","nmd","mpds","cmr","alexandria","omdb","odbx"}.
+        List of OPTIMADE provider keys to query. If omitted, uses:
+        {"mp","oqmd","jarvis","nmd","mpds","cmr","alexandria","omdb","odbx"}
 
     Returns
     -------
     FetchResult
         {
-          "output_dir": <Path>,
-          "files": [<saved files>],
-          "providers_used": [<providers_seen>],
-          "filter": "<the filter you sent>",
-          "warnings": [<messages>]
+          "output_dir": Path to the folder with saved results,
+          "files": List of saved structure files,
+          "providers_used": Providers that returned results,
+          "filter": The filter string used,
+          "warnings": Any error or warning messages
         }
     """
     filt = (filter or "").strip()
     if not filt:
         msg = "[raw] empty filter string"
         logging.error(msg)
-        return {"output_dir": Path(), "files": [], "providers_used": [], "filter": "", "warnings": [msg]}
-
+        return {
+            "output_dir": Path(),
+            "files": [],
+            "providers_used": [],
+            "filter": "",
+            "warnings": [msg],
+        }
+    
     used_providers = set(providers) if providers else DEFAULT_PROVIDERS
     logging.info(f"[raw] providers={used_providers} filter={filt}")
 
