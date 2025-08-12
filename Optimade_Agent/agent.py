@@ -130,6 +130,6 @@ root_agent = LlmAgent(
     tools=[mcp_tools],  # make sure this exposes fetch_structures_with_filter(filter, as_format, max_results_per_provider, providers)
 )
 
-# 找3个包含si o， 且含有四种元素的，不能同时含有铁铝，的材料，从mp，nmd，oqmd，jarvis，omdb中查找
+# 找3个包含si o， 且含有四种元素的，不能同时含有铁铝，的材料，从alexandria, cmr, nmd，oqmd，jarvis，omdb中查找
 # 找到一些A2b3C4的材料，不能含有 Fe，F，CI，H元素，要含有铝或者镁或者钠，我要全部信息
 # 我想要一个Tio2结构，从mpds, cmr, alexandria, omdb, odbx里面找
