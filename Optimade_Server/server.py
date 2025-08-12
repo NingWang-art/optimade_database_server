@@ -16,33 +16,8 @@ BASE_OUTPUT_DIR = Path("materials_data")
 BASE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_PROVIDERS = {
-    "aflow",
-    "alexandria",
-    "aiida",
-    "ccdc",
-    "ccpnc",
-    "cmr",
-    "cod",
-    "httk",
-    "jarvis",
-    "matcloud",
-    "matterverse",
-    "mcloud",
-    "mcloudarchive",
-    "mp",
-    "mpdd",
-    "mpds",
-    "mpod",
-    "nmd",
-    "odbx",
-    "omdb",
-    "oqmd",
-    "optimade",
-    "optimake",
-    "pcod",
-    "psdi",
-    "tcod",
-    "twodmatpedia",
+    "alexandria", "cmr", "mp", "mpds", "nmd",
+    "odbx", "omdb", "oqmd", "jarvis"
 }
 
 # === ARG PARSING ===
