@@ -144,7 +144,8 @@ async def fetch_structures_with_filter(
     try:
         client = OptimadeClient(
             include_providers=used_providers,
-            max_results_per_provider=max_results_per_provider
+            max_results_per_provider=max_results_per_provider,
+            http_timeout=25.0 
         )
         results = await to_thread.run_sync(lambda: client.get(filter=filt))
     except Exception as e:
