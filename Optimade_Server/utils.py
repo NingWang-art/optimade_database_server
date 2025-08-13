@@ -99,3 +99,36 @@ def save_structures(results: Dict, output_folder: Path, max_results: int, as_cif
     }
     (output_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
     return files, warnings, providers_seen
+
+
+def filter_to_tag(filter_str: str, max_len: int = 30) -> str:
+    """
+    Convert an OPTIMADE filter string into a short, filesystem-safe tag.
+
+    Parameters
+    ----------
+    filter_str : str
+        The original OPTIMADE filter string.
+    max_len : int, optional
+        Maximum length of the resulting tag (default: 30).
+
+    Returns
+    -------
+    str
+        A short, sanitized tag derived from the filter.
+    """
+    # Remove surrounding spaces and quotes
+    tag = filter_str.strip().replace('"', '').replace("'", "")
+
+    # Replace spaces, commas, and equals with underscores/dashes
+    tag = tag.replace(" ", "_").replace(",", "-").replace("=", "")
+
+    # Keep only safe characters: alphanumeric, underscore, dash
+    tag = "".join(c for c in tag if c.isalnum() or c in "_-")
+
+    # Limit length
+    if len(tag) > max_len:
+        tag = tag[:max_len]
+
+    # Fallback if everything gets stripped
+    return tag or "filter"

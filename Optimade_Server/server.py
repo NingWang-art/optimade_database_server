@@ -10,15 +10,40 @@ from anyio import to_thread
 from optimade.client import OptimadeClient
 from dp.agent.server import CalculationMCPServer
 
-from utils import save_structures  # must accept (results, output_folder, max_results, as_cif)
+from utils import *
 
 # === CONFIG ===
 BASE_OUTPUT_DIR = Path("materials_data")
 BASE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_PROVIDERS = {
-    "alexandria", "cmr", "mp", "mpds", "nmd",
-    "odbx", "omdb", "oqmd", "jarvis"
+    "aflow",
+    "alexandria",
+    "aiida",
+    "ccdc",
+    "ccpnc",
+    "cmr",
+    "cod",
+    "httk",
+    "jarvis",
+    "matcloud",
+    "matterverse",
+    "mcloud",
+    "mcloudarchive",
+    "mp",
+    "mpdd",
+    "mpds",
+    "mpod",
+    "nmd",
+    "odbx",
+    "omdb",
+    "oqmd",
+    "optimade",
+    "optimake",
+    "pcod",
+    "psdi",
+    "tcod",
+    "twodmatpedia",
 }
 
 # === ARG PARSING ===
@@ -135,9 +160,10 @@ async def fetch_structures_with_filter(
         }
 
     # timestamped folder + short hash of filter for traceability
+    tag = filter_to_tag(filt)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     short = hashlib.sha1(filt.encode("utf-8")).hexdigest()[:8]
-    out_folder = BASE_OUTPUT_DIR / f"rawfilter_{ts}_{short}"
+    out_folder = BASE_OUTPUT_DIR / f"{tag}_{ts}_{short}"
 
     files, warns, providers_seen = await to_thread.run_sync(
         save_structures,
