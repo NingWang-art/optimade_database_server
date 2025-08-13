@@ -82,7 +82,7 @@ root_agent = LlmAgent(
         "- filter: an OPTIMADE filter string\n"
         "- as_format: \"cif\" (default) or \"json\"\n"
         "- max_results_per_provider: integer (default 2)\n"
-        "- providers: optional list (default: aflow, alexandria, aiida, ccdc, ccpnc, cmr, cod, httk, jarvis, matcloud, matterverse, mcloud, mcloudarchive, mp, mpdd, mpds, mpod, nmd, odbx, omdb, oqmd, optimade, optimake, pcod, psdi, tcod, twodmatpedia)\n\n"
+        "- providers: optional list (default: aflow, alexandria, cmr, cod, jarvis, matcloud, matterverse, mcloud, mcloudarchive, mp, mpdd, mpds, mpod, nmd, odbx, omdb, oqmd, tcod, twodmatpedia)\n\n"
 
         "=== OPTIMADE FILTER SYNTAX QUICK GUIDE ===\n"
         "• String equality: chemical_formula_reduced=\"O2Si\"\n"

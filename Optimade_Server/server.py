@@ -19,12 +19,12 @@ BASE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 DEFAULT_PROVIDERS = {
     "aflow",
     "alexandria",
-    "aiida",
-    "ccdc",
-    "ccpnc",
+    # "aiida",
+    # "ccdc",
+    # "ccpnc",
     "cmr",
     "cod",
-    "httk",
+    # "httk",
     "jarvis",
     "matcloud",
     "matterverse",
@@ -38,10 +38,10 @@ DEFAULT_PROVIDERS = {
     "odbx",
     "omdb",
     "oqmd",
-    "optimade",
-    "optimake",
-    "pcod",
-    "psdi",
+    # "optimade",
+    # "optimake",
+    # "pcod",
+    # "psdi",
     "tcod",
     "twodmatpedia",
 }
@@ -114,7 +114,7 @@ async def fetch_structures_with_filter(
         Maximum number of results to retrieve from each provider (default: 2).
     providers : list[str], optional
         List of OPTIMADE provider keys to query. If omitted, uses:
-        {"aflow","alexandria","aiida","ccdc","ccpnc","cmr","cod","httk","jarvis","matcloud","matterverse","mcloud","mcloudarchive","mp","mpdd","mpds","mpod","nmd","odbx","omdb","oqmd","optimade","optimake","pcod","psdi","tcod","twodmatpedia"}
+        {"aflow","alexandria","cmr","cod","jarvis","matcloud","matterverse","mcloud","mcloudarchive","mp","mpdd","mpds","mpod","nmd","odbx","omdb","oqmd","tcod","twodmatpedia"}
     Returns
     -------
     FetchResult
