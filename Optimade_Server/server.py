@@ -5,6 +5,7 @@ from typing import List, Optional, TypedDict, Literal
 from pathlib import Path
 from datetime import datetime
 import hashlib
+from anyio import to_thread
 
 from optimade.client import OptimadeClient
 from dp.agent.server import CalculationMCPServer
@@ -54,7 +55,7 @@ mcp = CalculationMCPServer("OptimadeServer", port=args.port, host=args.host)
 
 # === TOOL: RAW filter fetch ===
 @mcp.tool()
-def fetch_structures_with_filter(
+async def fetch_structures_with_filter(
     filter: str,
     as_format: Format = "cif",
     max_results_per_provider: int = 2,
@@ -121,7 +122,7 @@ def fetch_structures_with_filter(
             include_providers=used_providers,
             max_results_per_provider=max_results_per_provider
         )
-        results = client.get(filter=filt)
+        results = await to_thread.run_sync(lambda: client.get(filter=filt))
     except Exception as e:
         msg = f"[raw] fetch failed: {e}"
         logging.error(msg)
@@ -138,11 +139,9 @@ def fetch_structures_with_filter(
     short = hashlib.sha1(filt.encode("utf-8")).hexdigest()[:8]
     out_folder = BASE_OUTPUT_DIR / f"rawfilter_{ts}_{short}"
 
-    files, warns, providers_seen = save_structures(
-        results,
-        out_folder,
-        max_results_per_provider,
-        as_cif=(as_format == "cif"),
+    files, warns, providers_seen = await to_thread.run_sync(
+        save_structures,
+        results, out_folder, max_results_per_provider, as_format == "cif"
     )
 
     # manifest (handy for downstream)
