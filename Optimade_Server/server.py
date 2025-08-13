@@ -42,10 +42,10 @@ Format = Literal["cif", "json"]
 
 class FetchResult(TypedDict):
     output_dir: Path
-    files: List[str]
-    providers_used: List[str]
-    filter: str
-    warnings: List[str]
+    files: List[Path]
+    # providers_used: List[str]
+    # filter: str
+    # warnings: List[str]
 
 # === MCP SERVER ===
 args = parse_args()
@@ -160,9 +160,9 @@ def fetch_structures_with_filter(
     return {
         "output_dir": out_folder,
         "files": files,
-        "providers_used": sorted(list(set(providers_seen))),
-        "filter": filt,
-        "warnings": warns,
+        # "providers_used": sorted(list(set(providers_seen))),
+        # "filter": filt,
+        # "warnings": warns,
     }
 
 # === RUN MCP SERVER ===
