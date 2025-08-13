@@ -114,8 +114,7 @@ async def fetch_structures_with_filter(
         Maximum number of results to retrieve from each provider (default: 2).
     providers : list[str], optional
         List of OPTIMADE provider keys to query. If omitted, uses:
-        {"mp","oqmd","jarvis","nmd","mpds","cmr","alexandria","omdb","odbx"}
-
+        {"aflow","alexandria","aiida","ccdc","ccpnc","cmr","cod","httk","jarvis","matcloud","matterverse","mcloud","mcloudarchive","mp","mpdd","mpds","mpod","nmd","odbx","omdb","oqmd","optimade","optimake","pcod","psdi","tcod","twodmatpedia"}
     Returns
     -------
     FetchResult
