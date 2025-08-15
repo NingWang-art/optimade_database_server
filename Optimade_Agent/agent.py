@@ -76,60 +76,73 @@ mcp_tools = CalculationMCPToolset(
 root_agent = LlmAgent(
     model=LiteLlm(model="deepseek/deepseek-chat"),
     name="Optimade_Agent",
-    description="Retrieves crystal structures from OPTIMADE databases using a RAW filter string.",
+    description=(
+        "Retrieves crystal structures from OPTIMADE databases using raw filters, "
+        "with optional provider-specific helpers for space group and band gap."
+    ),
     instruction=(
-        "Use the OPTIMADE API with a RAW filter string. You must supply:\n"
-        "- filter: an OPTIMADE filter string\n"
-        "- as_format: \"cif\" (default) or \"json\"\n"
-        "- max_results_per_provider: integer (default 2)\n"
-        "- providers: optional list (default: aflow, alexandria, cmr, cod, jarvis, matcloud, matterverse, mcloud, mcloudarchive, mp, mpdd, mpds, mpod, nmd, odbx, omdb, oqmd, tcod, twodmatpedia)\n\n"
+        "You can call three MCP tools exposed by the server:\n"
+        "1) fetch_structures_with_filter(filter, as_format='cif'|'json', max_results_per_provider=2, providers=[...])\n"
+        "   - Sends ONE raw OPTIMADE filter string to all chosen providers at once.\n"
+        "2) fetch_structures_with_spg(base_filter, spg_number, as_format='cif'|'json', max_results_per_provider=3, providers=[...])\n"
+        "   - Adds provider-specific *space-group* clauses (e.g., _tcod_sg, _oqmd_spacegroup, _alexandria_space_group) and queries providers in parallel.\n"
+        "3) fetch_structures_with_bandgap(base_filter, min_bg=None, max_bg=None, as_format='cif'|'json', max_results_per_provider=2, providers=[...])\n"
+        "   - Adds provider-specific *band-gap* clauses (e.g., _oqmd_band_gap, _gnome_bandgap, _mcloudarchive_band_gap) and queries in parallel.\n\n"
+        "   - For band-gap related tasks, **use 'json' as the default as_format** to include complete metadata.\n\n"
 
-        "=== OPTIMADE FILTER SYNTAX QUICK GUIDE ===\n"
-        "• String equality: chemical_formula_reduced=\"O2Si\"\n"
+        "=== DEFAULT PROVIDERS ===\n"
+        "- Raw filter: alexandria, cmr, cod, mcloud, mcloudarchive, mp, mpdd, mpds, nmd, odbx, omdb, oqmd, tcod, twodmatpedia\n"
+        "- Space group (SPG): alexandria, cod, mpdd, nmd, odbx, oqmd, tcod\n"
+        "- Band gap (BG): alexandria, odbx, oqmd, mcloudarchive, twodmatpedia\n\n"
+
+        "=== OPTIMADE FILTER QUICK GUIDE ===\n"
+        "• Equality: chemical_formula_reduced=\"O2Si\"\n"
         "• Substring: chemical_formula_descriptive CONTAINS \"H2O\"\n"
         "• Lists: elements HAS ALL \"Al\",\"O\",\"Mg\" | HAS ANY | HAS ONLY\n"
         "• Numbers: nelements=3, nelements>=2 AND nelements<=7\n"
-        "• Logic: AND, OR, NOT (use parentheses to group)\n"
-        "• Examples of grouping: (A AND B) OR (C AND NOT D)\n\n"
+        "• Logic: AND, OR, NOT (use parentheses)\n"
+        "Tip: exact element set → elements HAS ALL \"A\",\"B\" AND nelements=2\n\n"
 
-        "=== SUPPORTED PROPERTIES (use exactly as shown) ===\n"
-        "- elements (list[str]): e.g., elements HAS ALL \"Si\",\"O\"; can combine with nelements or LENGTH\n"
-        "- nelements (int): e.g., nelements=3, nelements>=2 AND nelements<=7\n"
-        "- chemical_formula_reduced (str): exact reduced formula in alphabetical order, e.g., \"H2NaO\", \"O2Si\"\n"
-        "- chemical_formula_descriptive (str): free-form; supports CONTAINS and exact equality\n"
-        "- chemical_formula_anonymous (str): exact, e.g., \"A2B\"\n"
-        "Tip: To enforce EXACT element set, prefer: elements HAS ALL \"A\",\"B\",\"C\" AND nelements=3\n\n"
+        "=== HOW TO CHOOSE A TOOL ===\n"
+        "- Pure element/formula/logic → use fetch_structures_with_filter.\n"
+        "- Needs a specific space group number (1–230) → use fetch_structures_with_spg with base_filter.\n"
+        "- Needs band-gap range → use fetch_structures_with_bandgap with base_filter and min/max.\n\n"
 
-        "=== RELIABILITY NOTES ===\n"
-        "- Some providers may not support all properties equally (e.g., descriptive CONTAINS). If a query fails, try a simpler filter.\n"
-        "- Keep element symbols properly capitalized and strings double-quoted.\n\n"
+        "=== DEMOS (用户问题 → 工具与参数) ===\n"
+        "1) 用户：找3个包含si o， 且含有四种元素的，不能同时含有铁铝，的材料，从alexandria, cmr, nmd，oqmd，omdb中查找。\n"
+        "   → Tool: fetch_structures_with_filter\n"
+        "     filter: elements HAS ALL \"Si\",\"O\" AND nelements=4 AND NOT (elements HAS ALL \"Fe\",\"Al\")\n"
+        "     as_format: \"cif\"\n"
+        "     max_results_per_provider: 3\n"
+        "     providers: [\"alexandria\",\"cmr\",\"nmd\",\"oqmd\",\"omdb\"]\n\n"
 
-        "=== EXAMPLES (USER ASK → TOOL ARGS) ===\n"
-        "1) 同时包含 Al、O、Mg（且只这三种元素），每库最多 3 个，CIF：\n"
-        "   filter: elements HAS ALL \"Al\",\"O\",\"Mg\" AND nelements=3\n"
-        "   as_format: \"cif\"; max_results_per_provider: 3\n\n"
-        "2) 含有 Al 或 O 任意其一，每库 1 个，JSON：\n"
-        "   filter: elements HAS ANY \"Al\",\"O\"\n"
-        "   as_format: \"json\"; max_results_per_provider: 1\n\n"
-        "3) 只包含 Si 与 O 的结构（不含其他元素），从 MP 和 JARVIS 各取 1 个，CIF：\n"
-        "   filter: elements HAS ONLY \"Si\",\"O\"\n"
-        "   providers: [\"mp\",\"jarvis\"]; as_format: \"cif\"; max_results_per_provider: 1\n\n"
-        "4) 精确配方为 O2Si（Reduced），默认库，CIF：\n"
-        "   filter: chemical_formula_reduced=\"O2Si\"\n"
-        "   as_format: \"cif\"\n\n"
-        "5) 配方描述包含 H2O（自由格式），JSON：\n"
-        "   filter: chemical_formula_descriptive CONTAINS \"H2O\"\n"
-        "   as_format: \"json\"\n\n"
-        "6) 匿名配方为 A2B，且排除含 Na 的：\n"
-        "   filter: chemical_formula_anonymous=\"A2B\" AND NOT (elements HAS ANY \"Na\")\n\n"
-        "7) 逻辑组合：含 Si 且 (含 O 或 含 Al)，但不含 H：\n"
-        "   filter: elements HAS ANY \"Si\" AND (elements HAS ANY \"O\" OR elements HAS ANY \"Al\") AND NOT (elements HAS ANY \"H\")\n\n"
+        "2) 用户：找到一些A2b3C4的材料，不能含有 Fe，F，CI，H元素，要含有铝或者镁或者钠，我要全部信息。\n"
+        "   → Tool: fetch_structures_with_filter\n"
+        "     filter: chemical_formula_anonymous=\"A2B3C4\" AND NOT (elements HAS ANY \"Fe\",\"F\",\"Cl\",\"H\") AND (elements HAS ANY \"Al\",\"Mg\",\"Na\")\n"
+        "     as_format: \"json\"  # “全部信息”\n"
 
-        "When you answer users, explain briefly what you searched for, and return the download link (and file list if available)."
+        "3) 用户：找一些ZrO，从mpds, cmr, alexandria, omdb, odbx里面找\n"
+        "   → Tool: fetch_structures_with_filter\n"
+        "     filter: chemical_formula_reduced=\"OZr\"  # 注意元素要按字母表顺序\n"
+        "     as_format: \"cif\"\n"
+        "     providers: [\"mpds\",\"cmr\",\"alexandria\",\"omdb\",\"odbx\"]\n\n"
+
+        "4) 用户：查找gamma相的TiAl合金\n"
+        "   → Tool: fetch_structures_with_spg\n"
+        "     base_filter: elements HAS ONLY \"Ti\",\"Al\"\n"
+        "     spg_number: 123   # γ‑TiAl (L1₀) 常记作 P4/mmm，为 123空间群；你需要根据相结构信息确定空间群序号\n"
+        "     as_format: \"cif\"\n"
+
+        "5) 用户：找一些含铝的，能带在1.0-2.0间的材料\n"
+        "   → Tool: fetch_structures_with_bandgap\n"
+        "     base_filter: elements HAS ALL \"Al\"\n"
+        "     min_bg: 1.0\n"
+        "     max_bg: 2.0\n"
+        "     as_format: \"json\"\n     # 默认输出json格式，对于能带相关查询"   
+
+        "=== ANSWER STYLE ===\n"
+        "- Briefly explain the applied constraints (elements/formula + SPG/BG if any).\n"
+        "- Provide the archive/folder path and list of files when available.\n"
     ),
-    tools=[mcp_tools],  # make sure this exposes fetch_structures_with_filter(filter, as_format, max_results_per_provider, providers)
+    tools=[mcp_tools],
 )
-
-# 找3个包含si o， 且含有四种元素的，不能同时含有铁铝，的材料，从alexandria, cmr, nmd，oqmd，jarvis，omdb中查找
-# 找到一些A2b3C4的材料，不能含有 Fe，F，CI，H元素，要含有铝或者镁或者钠，我要全部信息
-# 我想要一个Tio2结构，从mpds, cmr, alexandria, omdb, odbx里面找

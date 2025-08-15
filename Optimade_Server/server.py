@@ -6,49 +6,22 @@ from pathlib import Path
 from datetime import datetime
 import hashlib
 from anyio import to_thread
+import asyncio
 
 from optimade.client import OptimadeClient
 from dp.agent.server import CalculationMCPServer
 
+# Pull all helpers + provider sets from your utils.py
 from utils import *
 
 # === CONFIG ===
 BASE_OUTPUT_DIR = Path("materials_data")
 BASE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-DEFAULT_PROVIDERS = {
-    "aflow",
-    "alexandria",
-    # "aiida",
-    # "ccdc",
-    # "ccpnc",
-    "cmr",
-    "cod",
-    # "httk",
-    "jarvis",
-    "matcloud",
-    "matterverse",
-    "mcloud",
-    "mcloudarchive",
-    "mp",
-    "mpdd",
-    "mpds",
-    "mpod",
-    "nmd",
-    "odbx",
-    "omdb",
-    "oqmd",
-    # "optimade",
-    # "optimake",
-    # "pcod",
-    # "psdi",
-    "tcod",
-    "twodmatpedia",
-}
 
 # === ARG PARSING ===
 def parse_args():
-    parser = argparse.ArgumentParser(description="OPTIMADE Materials Data MCP Server (raw filter mode)")
+    parser = argparse.ArgumentParser(description="OPTIMADE Materials Data MCP Server")
     parser.add_argument('--port', type=int, default=50001, help='Server port (default: 50001)')
     parser.add_argument('--host', default='0.0.0.0', help='Server host (default: 0.0.0.0)')
     parser.add_argument('--log-level', default='INFO',
@@ -63,22 +36,22 @@ def parse_args():
             log_level = 'INFO'
         return Args()
 
-# === RESULT TYPE ===
+
+# === RESULT TYPE (what each tool returns) ===
 Format = Literal["cif", "json"]
 
 class FetchResult(TypedDict):
-    output_dir: Path
-    files: List[Path]
-    # providers_used: List[str]
-    # filter: str
-    # warnings: List[str]
+    output_dir: Path            # folder where results are saved
+    files: List[str]            # list of saved file paths (strings)
+
 
 # === MCP SERVER ===
 args = parse_args()
 logging.basicConfig(level=args.log_level)
 mcp = CalculationMCPServer("OptimadeServer", port=args.port, host=args.host)
 
-# === TOOL: RAW filter fetch ===
+
+# === TOOL 1: RAW OPTIMADE FILTER ===
 @mcp.tool()
 async def fetch_structures_with_filter(
     filter: str,
@@ -87,57 +60,40 @@ async def fetch_structures_with_filter(
     providers: Optional[List[str]] = None,
 ) -> FetchResult:
     """
-    Fetch crystal structures from OPTIMADE databases using a raw filter string.
+    Fetch crystal structures using a RAW OPTIMADE filter (single request across providers).
 
-    This function passes the provided OPTIMADE filter directly to all chosen providers
-    (or the default set if none are specified). The filter can use any supported 
-    OPTIMADE properties and logical operators, e.g.:
-        - elements HAS ALL "Al","O","Mg"
-        - elements HAS ONLY "Si","O"
-        - elements HAS ALL "Al","O","Mg" AND nelements=3
-        - chemical_formula_reduced="O2Si"
-        - chemical_formula_descriptive CONTAINS "H2O"
-        - chemical_formula_anonymous="A2B" AND NOT (elements HAS ANY "Na")
+    What this does
+    --------------
+    - Sends the *exact* `filter` string to all selected providers in a single aggregated query.
+    - Saves up to `max_results_per_provider` per provider in `as_format` ("cif" or "json").
 
-    Parameters
-    ----------
+    Arguments
+    ---------
     filter : str
-        An OPTIMADE filter expression. Supports all valid syntax:
-        - Property filters (elements, nelements, chemical_formula_reduced, etc.)
-        - Logical operators: AND, OR, NOT (parentheses for grouping)
-        - String equality/contains and numeric comparisons
-    as_format : {"cif","json"}, optional
-        Output format of saved structures.
-        "cif"  → Crystallographic Information File (default)
-        "json" → Raw OPTIMADE structure JSON
-    max_results_per_provider : int, optional
-        Maximum number of results to retrieve from each provider (default: 2).
-    providers : list[str], optional
-        List of OPTIMADE provider keys to query. If omitted, uses:
-        {"aflow","alexandria","cmr","cod","jarvis","matcloud","matterverse","mcloud","mcloudarchive","mp","mpdd","mpds","mpod","nmd","odbx","omdb","oqmd","tcod","twodmatpedia"}
+        An OPTIMADE filter expression. Examples:
+          - elements HAS ALL "Al","O","Mg"
+          - elements HAS ONLY "Si","O"
+          - chemical_formula_reduced="O2Si"
+          - chemical_formula_descriptive CONTAINS "H2O"
+          - (elements HAS ANY "Si") AND NOT (elements HAS ANY "H")
+    as_format : {"cif","json"}
+        Output format for saved structures (default "cif").
+    max_results_per_provider : int
+        Cap results saved from EACH provider (default 2).
+    providers : list[str] | None
+        Providers to query. If omitted, uses DEFAULT_PROVIDERS from utils.py.
+
     Returns
     -------
     FetchResult
-        {
-          "output_dir": Path to the folder with saved results,
-          "files": List of saved structure files,
-          "providers_used": Providers that returned results,
-          "filter": The filter string used,
-          "warnings": Any error or warning messages
-        }
+        output_dir: Path to the folder with saved results
+        files: list of saved file paths
     """
     filt = (filter or "").strip()
     if not filt:
-        msg = "[raw] empty filter string"
-        logging.error(msg)
-        return {
-            "output_dir": Path(),
-            "files": [],
-            "providers_used": [],
-            "filter": "",
-            "warnings": [msg],
-        }
-    
+        logging.error("[raw] empty filter string")
+        return {"output_dir": Path(), "files": []}
+
     used_providers = set(providers) if providers else DEFAULT_PROVIDERS
     logging.info(f"[raw] providers={used_providers} filter={filt}")
 
@@ -145,33 +101,25 @@ async def fetch_structures_with_filter(
         client = OptimadeClient(
             include_providers=used_providers,
             max_results_per_provider=max_results_per_provider,
-            http_timeout=25.0 
+            http_timeout=25.0,
         )
         results = await to_thread.run_sync(lambda: client.get(filter=filt))
     except Exception as e:
-        msg = f"[raw] fetch failed: {e}"
-        logging.error(msg)
-        return {
-            "output_dir": Path(),
-            "files": [],
-            "providers_used": sorted(list(used_providers)),
-            "filter": filt,
-            "warnings": [msg],
-        }
+        logging.error(f"[raw] fetch failed: {e}")
+        return {"output_dir": Path(), "files": []}
 
-    # timestamped folder + short hash of filter for traceability
+    # Timestamped folder + short hash of filter for traceability
     tag = filter_to_tag(filt)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     short = hashlib.sha1(filt.encode("utf-8")).hexdigest()[:8]
     out_folder = BASE_OUTPUT_DIR / f"{tag}_{ts}_{short}"
 
     files, warns, providers_seen = await to_thread.run_sync(
-        save_structures,
-        results, out_folder, max_results_per_provider, as_format == "cif"
+        save_structures, results, out_folder, max_results_per_provider, as_format == "cif"
     )
 
-    # manifest (handy for downstream)
     manifest = {
+        "mode": "raw_filter",
         "filter": filt,
         "providers_requested": sorted(list(used_providers)),
         "providers_seen": providers_seen,
@@ -182,15 +130,213 @@ async def fetch_structures_with_filter(
     }
     (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
 
-    return {
-        "output_dir": out_folder,
-        "files": files,
-        # "providers_used": sorted(list(set(providers_seen))),
-        # "filter": filt,
-        # "warnings": warns,
+    return {"output_dir": out_folder, "files": files}
+
+
+# === TOOL 2: SPACE-GROUP AWARE FETCH (provider-specific fields, parallel) ===
+@mcp.tool()
+async def fetch_structures_with_spg(
+    base_filter: Optional[str],
+    spg_number: int,
+    as_format: Format = "cif",
+    max_results_per_provider: int = 3,
+    providers: Optional[List[str]] = None,
+) -> FetchResult:
+    """
+    Fetch structures constrained by space group number across multiple providers in parallel.
+
+    What this does
+    --------------
+    - Builds a provider-specific space-group clause (e.g., `_tcod_sg="P m -3 m"`, `_oqmd_spacegroup="Pm-3m"`,
+      `_alexandria_space_group=221`, etc.) via `get_spg_filter_map`.
+    - Combines it with your optional `base_filter` (elements/formula logic).
+    - Runs per-provider queries **in parallel**, then saves all results into one folder.
+
+    Arguments
+    ---------
+    base_filter : str | None
+        Common OPTIMADE filter applied to all providers (e.g., "elements HAS ONLY \"Ti\",\"Al\"").
+    spg_number : int
+        International space-group number (1–230).
+    as_format : {"cif","json"}
+        Output format for saved structures (default "cif").
+    max_results_per_provider : int
+        Cap results saved from EACH provider (default 3).
+    providers : list[str] | None
+        Providers to query. If omitted, uses DEFAULT_SPG_PROVIDERS from utils.py.
+
+    Returns
+    -------
+    FetchResult
+        output_dir: Path to the folder with saved results
+        files: list of saved file paths
+    """
+    base = (base_filter or "").strip()
+    used = set(providers) if providers else DEFAULT_SPG_PROVIDERS
+
+    # Build provider-specific SPG clauses and combine with base filter
+    spg_map = get_spg_filter_map(spg_number, used)
+    filters = build_provider_filters(base, spg_map)
+    if not filters:
+        logging.warning("[spg] no provider-specific space-group clause available")
+        return {"output_dir": Path(), "files": []}
+
+    async def _query_one(provider: str, clause: str) -> dict:
+        logging.info(f"[spg] {provider}: {clause}")
+        try:
+            client = OptimadeClient(
+                include_providers={provider},
+                max_results_per_provider=max_results_per_provider,
+                http_timeout=25.0,
+            )
+            return await to_thread.run_sync(lambda: client.get(filter=clause))
+        except Exception as e:
+            logging.error(f"[spg] fetch failed for {provider}: {e}")
+            return {"structures": {}}
+
+    # Parallel fan‑out per provider
+    results_list = await asyncio.gather(*[
+        _query_one(p, clause) for p, clause in filters.items()
+    ])
+
+    # Save all results together
+    tag = filter_to_tag(f"{base} AND spg={spg_number}")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    short = hashlib.sha1(f"{base}|spg={spg_number}".encode("utf-8")).hexdigest()[:8]
+    out_folder = BASE_OUTPUT_DIR / f"{tag}_{ts}_{short}"
+
+    all_files: List[str] = []
+    all_warnings: List[str] = []
+    all_providers: List[str] = []
+    for res in results_list:
+        files, warns, providers_seen = await to_thread.run_sync(
+            save_structures, res, out_folder, max_results_per_provider, as_format == "cif"
+        )
+        all_files.extend(files)
+        all_warnings.extend(warns)
+        all_providers.extend(providers_seen)
+
+    manifest = {
+        "mode": "space_group",
+        "base_filter": base,
+        "spg_number": spg_number,
+        "providers_requested": sorted(list(used)),
+        "providers_seen": all_providers,
+        "files": all_files,
+        "warnings": all_warnings,
+        "format": as_format,
+        "max_results_per_provider": max_results_per_provider,
+        "per_provider_filters": filters,
     }
+    (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
+
+    return {"output_dir": out_folder, "files": all_files}
+
+
+# === TOOL 3: BAND‑GAP RANGE FETCH (provider-specific fields, parallel) ===
+@mcp.tool()
+async def fetch_structures_with_bandgap(
+    base_filter: Optional[str],
+    min_bg: Optional[float] = None,
+    max_bg: Optional[float] = None,
+    as_format: Format = "cif",
+    max_results_per_provider: int = 2,
+    providers: Optional[List[str]] = None,
+) -> FetchResult:
+    """
+    Fetch structures constrained by band-gap range across multiple providers in parallel.
+
+    What this does
+    --------------
+    - Resolves provider-specific band-gap property names (e.g., `_oqmd_band_gap`, `_gnome_bandgap`,
+      `_mcloudarchive_band_gap`, etc.) via `get_bandgap_filter_map`.
+    - Builds a per-provider band-gap clause (min/max inclusive), combines with your optional `base_filter`.
+    - Runs each provider query **in parallel**, then saves all results into one folder.
+
+    Arguments
+    ---------
+    base_filter : str | None
+        Common OPTIMADE filter applied to all providers (e.g., 'elements HAS ALL "Al"').
+    min_bg, max_bg : float | None
+        Band-gap range in eV (open-ended allowed, e.g., min only or max only).
+    as_format : {"cif","json"}
+        Output format for saved structures (default "cif").
+    max_results_per_provider : int
+        Cap results saved from EACH provider (default 2).
+    providers : list[str] | None
+        Providers to query; if None, uses DEFAULT_BG_PROVIDERS from utils.py.
+
+    Returns
+    -------
+    FetchResult
+        output_dir: Path to the folder with saved results
+        files: list of saved file paths
+    """
+    base = (base_filter or "").strip()
+    used = set(providers) if providers else DEFAULT_BG_PROVIDERS
+
+    # Build per-provider bandgap clause and combine with base
+    bg_map = get_bandgap_filter_map(min_bg, max_bg, used)
+    filters = build_provider_filters(base, bg_map)
+
+    if not filters:
+        logging.warning("[bandgap] no provider-specific band-gap clause available")
+        return {"output_dir": Path(), "files": []}
+
+    async def _query_one(provider: str, clause: str) -> dict:
+        logging.info(f"[bandgap] {provider}: {clause}")
+        try:
+            client = OptimadeClient(
+                include_providers={provider},
+                max_results_per_provider=max_results_per_provider,
+                http_timeout=25.0,
+            )
+            return await to_thread.run_sync(lambda: client.get(filter=clause))
+        except Exception as e:
+            logging.error(f"[bandgap] fetch failed for {provider}: {e}")
+            return {"structures": {}}
+
+    # Parallel fan‑out per provider
+    results_list = await asyncio.gather(
+        *[_query_one(p, clause) for p, clause in filters.items()]
+    )
+
+    # Save all results together
+    tag = filter_to_tag(f"{base} AND bandgap[{min_bg},{max_bg}]")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    short = hashlib.sha1(f"{base}|bg={min_bg}:{max_bg}".encode("utf-8")).hexdigest()[:8]
+    out_folder = BASE_OUTPUT_DIR / f"{tag}_{ts}_{short}"
+
+    all_files: List[str] = []
+    all_warnings: List[str] = []
+    all_providers: List[str] = []
+    for res in results_list:
+        files, warns, providers_seen = await to_thread.run_sync(
+            save_structures, res, out_folder, max_results_per_provider, as_format == "cif"
+        )
+        all_files.extend(files)
+        all_warnings.extend(warns)
+        all_providers.extend(providers_seen)
+
+    manifest = {
+        "mode": "band_gap",
+        "base_filter": base,
+        "band_gap_min": min_bg,
+        "band_gap_max": max_bg,
+        "providers_requested": sorted(list(used)),
+        "providers_seen": all_providers,
+        "files": all_files,
+        "warnings": all_warnings,
+        "format": as_format,
+        "max_results_per_provider": max_results_per_provider,
+        "per_provider_filters": filters,
+    }
+    (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
+
+    return {"output_dir": out_folder, "files": all_files}
+
 
 # === RUN MCP SERVER ===
 if __name__ == "__main__":
-    logging.info("Starting Optimade MCP Server (raw filter mode)…")
+    logging.info("Starting Optimade MCP Server…")
     mcp.run(transport="sse")

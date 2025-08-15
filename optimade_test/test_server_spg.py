@@ -20,8 +20,6 @@ BASE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # === RESULT TYPE ===
-Format = Literal["cif", "json"]
-
 class FetchResult(TypedDict):
     output_dir: Path
     files: List[Path]
@@ -32,7 +30,7 @@ class FetchResult(TypedDict):
 
 async def fetch_structures_with_filter(
     filter: str,
-    as_format: Format = "cif",
+    as_format: Literal["cif", "json"] = "cif",
     max_results_per_provider: int = 2,
     providers: Optional[List[str]] = None,
 ) -> FetchResult:
@@ -143,7 +141,7 @@ async def fetch_structures_with_filter(
 async def fetch_structures_with_spg(
     base_filter: Optional[str],
     spg_number: int,
-    as_format: Format = "cif",
+    as_format: Literal["cif", "json"] = "cif",
     max_results_per_provider: int = 3,
     providers: Optional[List[str]] = None,
 ) -> FetchResult:
@@ -218,7 +216,7 @@ async def fetch_structures_with_bandgap(
     base_filter: Optional[str],
     min_bg: Optional[float] = None,
     max_bg: Optional[float] = None,
-    as_format: Literal["cif", "json"] = "cif",
+    as_format: Literal["cif", "json"] = "json",
     max_results_per_provider: int = 2,
     providers: Optional[List[str]] = None,
 ) -> FetchResult:
@@ -315,5 +313,5 @@ async def fetch_structures_with_bandgap(
 # output1 = asyncio.run(fetch_structures_with_spg(base_filter='elements HAS ONLY "Ti", "Al"', spg_number=123))
 # print(output1)
 
-output2 = asyncio.run(fetch_structures_with_bandgap(base_filter='elements HAS ALL "Al"', min_bg=0.01, max_bg=10.0, as_format='json', providers=['mcloudarchive']))
+output2 = asyncio.run(fetch_structures_with_bandgap(base_filter='elements HAS ALL "Al"', min_bg=1.0, max_bg=2.0, as_format='json'))
 print(output2)
