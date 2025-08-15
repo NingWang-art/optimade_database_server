@@ -310,8 +310,16 @@ async def fetch_structures_with_bandgap(
         "files": all_files,
     }
 
-# output1 = asyncio.run(fetch_structures_with_spg(base_filter='elements HAS ONLY "Ti", "Al"', spg_number=123))
-# print(output1)
+output1 = asyncio.run(fetch_structures_with_spg(base_filter='chemical_formula_reduced=\"FeO\"', spg_number=225, as_format='json'))
+print(output1)
 
-output2 = asyncio.run(fetch_structures_with_bandgap(base_filter='elements HAS ALL "Al"', min_bg=1.0, max_bg=2.0, as_format='json'))
-print(output2)
+# output2 = asyncio.run(fetch_structures_with_bandgap(base_filter='chemical_formula_reduced=FeO', min_bg=1.0, max_bg=2.0, as_format='json'))
+# print(output2)
+
+'''    "cod": "(chemical_formula_reduced=\"FeO\") AND (_cod_sg=\"F m - 3 m\")",
+    "tcod": "(chemical_formula_reduced=\"FeO\") AND (_tcod_sg=\"F m - 3 m\")",
+    "mpdd": "(chemical_formula_reduced=\"FeO\") AND (_mpdd_spacegroupn=225)",
+    "odbx": "(chemical_formula_reduced=\"FeO\") AND (_gnome_space_group_it_number=225)",
+    "alexandria": "(chemical_formula_reduced=\"FeO\") AND (_alexandria_space_group=225)",
+    "nmd": "(chemical_formula_reduced=\"FeO\") AND (_nmd_dft_spacegroup=225)",
+    "oqmd": "(chemical_formula_reduced=\"FeO\") AND (_oqmd_spacegroup=\"Fm-3m\")"'''
