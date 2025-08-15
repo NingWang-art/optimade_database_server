@@ -104,7 +104,7 @@ async def fetch_structures_with_filter(
             http_timeout=25.0,
         )
         results = await to_thread.run_sync(lambda: client.get(filter=filt))
-    except Exception as e:
+    except (SystemExit, Exception) as e:  # catch SystemExit too
         logging.error(f"[raw] fetch failed: {e}")
         return {"output_dir": Path(), "files": []}
 
@@ -190,14 +190,24 @@ async def fetch_structures_with_spg(
                 http_timeout=25.0,
             )
             return await to_thread.run_sync(lambda: client.get(filter=clause))
-        except Exception as e:
+        except (SystemExit, Exception) as e:  # catch SystemExit too
             logging.error(f"[spg] fetch failed for {provider}: {e}")
             return {"structures": {}}
 
     # Parallel fan‑out per provider
-    results_list = await asyncio.gather(*[
-        _query_one(p, clause) for p, clause in filters.items()
-    ])
+    results_list = await asyncio.gather(
+        *[_query_one(p, clause) for p, clause in filters.items()],
+        return_exceptions=True,  # don't cancel all on one failure
+    )
+
+    # Turn any exceptions into empty result dicts
+    norm_results = []
+    for r in results_list:
+        if isinstance(r, Exception):
+            logging.error(f"[spg] task returned exception: {r}")
+            norm_results.append({"structures": {}})
+        else:
+            norm_results.append(r)
 
     # Save all results together
     tag = filter_to_tag(f"{base} AND spg={spg_number}")
@@ -208,7 +218,7 @@ async def fetch_structures_with_spg(
     all_files: List[str] = []
     all_warnings: List[str] = []
     all_providers: List[str] = []
-    for res in results_list:
+    for res in norm_results:
         files, warns, providers_seen = await to_thread.run_sync(
             save_structures, res, out_folder, max_results_per_provider, as_format == "cif"
         )
@@ -292,14 +302,22 @@ async def fetch_structures_with_bandgap(
                 http_timeout=25.0,
             )
             return await to_thread.run_sync(lambda: client.get(filter=clause))
-        except Exception as e:
+        except (SystemExit, Exception) as e:  # catch SystemExit too
             logging.error(f"[bandgap] fetch failed for {provider}: {e}")
             return {"structures": {}}
 
     # Parallel fan‑out per provider
     results_list = await asyncio.gather(
-        *[_query_one(p, clause) for p, clause in filters.items()]
+        *[_query_one(p, clause) for p, clause in filters.items()],
+        return_exceptions=True,  # don't cancel all on one failure
     )
+    norm_results = []
+    for r in results_list:
+        if isinstance(r, Exception):
+            logging.error(f"[bandgap] task returned exception: {r}")
+            norm_results.append({"structures": {}})
+        else:
+            norm_results.append(r)
 
     # Save all results together
     tag = filter_to_tag(f"{base} AND bandgap[{min_bg},{max_bg}]")
@@ -310,7 +328,7 @@ async def fetch_structures_with_bandgap(
     all_files: List[str] = []
     all_warnings: List[str] = []
     all_providers: List[str] = []
-    for res in results_list:
+    for res in norm_results:
         files, warns, providers_seen = await to_thread.run_sync(
             save_structures, res, out_folder, max_results_per_provider, as_format == "cif"
         )
