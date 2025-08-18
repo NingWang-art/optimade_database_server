@@ -56,7 +56,7 @@ mcp = CalculationMCPServer("OptimadeServer", port=args.port, host=args.host)
 async def fetch_structures_with_filter(
     filter: str,
     as_format: Format = "cif",
-    max_results_per_provider: int = 2,
+    n_results: int = 2,
     providers: Optional[List[str]] = None,
 ) -> FetchResult:
     """
@@ -65,7 +65,7 @@ async def fetch_structures_with_filter(
     What this does
     --------------
     - Sends the *exact* `filter` string to all selected providers in a single aggregated query.
-    - Saves up to `max_results_per_provider` per provider in `as_format` ("cif" or "json").
+    - Saves up to `n_results` results per provider in the specified `as_format` ("cif" or "json").
 
     Arguments
     ---------
@@ -78,8 +78,8 @@ async def fetch_structures_with_filter(
           - (elements HAS ANY "Si") AND NOT (elements HAS ANY "H")
     as_format : {"cif","json"}
         Output format for saved structures (default "cif").
-    max_results_per_provider : int
-        Cap results saved from EACH provider (default 2).
+    n_results : int
+        Number of results to save from EACH provider (default 2).
     providers : list[str] | None
         Providers to query. If omitted, uses DEFAULT_PROVIDERS from utils.py.
 
@@ -100,7 +100,7 @@ async def fetch_structures_with_filter(
     try:
         client = OptimadeClient(
             include_providers=used_providers,
-            max_results_per_provider=max_results_per_provider,
+            max_results_per_provider=n_results,
             http_timeout=25.0,
         )
         results = await to_thread.run_sync(lambda: client.get(filter=filt))
@@ -115,7 +115,7 @@ async def fetch_structures_with_filter(
     out_folder = BASE_OUTPUT_DIR / f"{tag}_{ts}_{short}"
 
     files, warns, providers_seen = await to_thread.run_sync(
-        save_structures, results, out_folder, max_results_per_provider, as_format == "cif"
+        save_structures, results, out_folder, n_results, as_format == "cif"
     )
 
     manifest = {
@@ -126,7 +126,7 @@ async def fetch_structures_with_filter(
         "files": files,
         "warnings": warns,
         "format": as_format,
-        "max_results_per_provider": max_results_per_provider,
+        "n_results": n_results,
     }
     (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
 
@@ -139,7 +139,7 @@ async def fetch_structures_with_spg(
     base_filter: Optional[str],
     spg_number: int,
     as_format: Format = "cif",
-    max_results_per_provider: int = 3,
+    n_results: int = 3,
     providers: Optional[List[str]] = None,
 ) -> FetchResult:
     """
@@ -160,8 +160,8 @@ async def fetch_structures_with_spg(
         International space-group number (1–230).
     as_format : {"cif","json"}
         Output format for saved structures (default "cif").
-    max_results_per_provider : int
-        Cap results saved from EACH provider (default 3).
+    n_results : int
+        Number of results to save from EACH provider (default 3).
     providers : list[str] | None
         Providers to query. If omitted, uses DEFAULT_SPG_PROVIDERS from utils.py.
 
@@ -186,7 +186,7 @@ async def fetch_structures_with_spg(
         try:
             client = OptimadeClient(
                 include_providers={provider},
-                max_results_per_provider=max_results_per_provider,
+                max_results_per_provider=n_results,
                 http_timeout=25.0,
             )
             return await to_thread.run_sync(lambda: client.get(filter=clause))
@@ -220,7 +220,7 @@ async def fetch_structures_with_spg(
     all_providers: List[str] = []
     for res in norm_results:
         files, warns, providers_seen = await to_thread.run_sync(
-            save_structures, res, out_folder, max_results_per_provider, as_format == "cif"
+            save_structures, res, out_folder, n_results, as_format == "cif"
         )
         all_files.extend(files)
         all_warnings.extend(warns)
@@ -235,7 +235,7 @@ async def fetch_structures_with_spg(
         "files": all_files,
         "warnings": all_warnings,
         "format": as_format,
-        "max_results_per_provider": max_results_per_provider,
+        "n_results": n_results,
         "per_provider_filters": filters,
     }
     (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
@@ -250,7 +250,7 @@ async def fetch_structures_with_bandgap(
     min_bg: Optional[float] = None,
     max_bg: Optional[float] = None,
     as_format: Format = "cif",
-    max_results_per_provider: int = 2,
+    n_results: int = 2,
     providers: Optional[List[str]] = None,
 ) -> FetchResult:
     """
@@ -271,8 +271,8 @@ async def fetch_structures_with_bandgap(
         Band-gap range in eV (open-ended allowed, e.g., min only or max only).
     as_format : {"cif","json"}
         Output format for saved structures (default "cif").
-    max_results_per_provider : int
-        Cap results saved from EACH provider (default 2).
+    n_results : int
+        Number of results to save from EACH provider (default 2).
     providers : list[str] | None
         Providers to query; if None, uses DEFAULT_BG_PROVIDERS from utils.py.
 
@@ -298,7 +298,7 @@ async def fetch_structures_with_bandgap(
         try:
             client = OptimadeClient(
                 include_providers={provider},
-                max_results_per_provider=max_results_per_provider,
+                max_results_per_provider=n_results,
                 http_timeout=25.0,
             )
             return await to_thread.run_sync(lambda: client.get(filter=clause))
@@ -330,7 +330,7 @@ async def fetch_structures_with_bandgap(
     all_providers: List[str] = []
     for res in norm_results:
         files, warns, providers_seen = await to_thread.run_sync(
-            save_structures, res, out_folder, max_results_per_provider, as_format == "cif"
+            save_structures, res, out_folder, n_results, as_format == "cif"
         )
         all_files.extend(files)
         all_warnings.extend(warns)
@@ -346,7 +346,7 @@ async def fetch_structures_with_bandgap(
         "files": all_files,
         "warnings": all_warnings,
         "format": as_format,
-        "max_results_per_provider": max_results_per_provider,
+        "n_results": n_results,
         "per_provider_filters": filters,
     }
     (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))

@@ -200,8 +200,8 @@ def _to_tcod_format(hm: str) -> str:
     s = re.sub(r'(?<=[A-Za-z])(?=[A-Za-z])', ' ', s)
     # 3) Put spaces between letter↔digit transitions (P4 → P 4, 4m → 4 m)
     s = re.sub(r'(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])', ' ', s)
-    # 4) Space out minus signs
-    s = s.replace('-', ' - ')
+    # 4) Put a space only *before* the minus (attach '-' to the number): 'm-3' -> 'm -3'
+    s = re.sub(r'\s*-\s*(?=\d)', ' -', s)
     # 5) Collapse multiple spaces
     return ' '.join(s.split())
 
@@ -292,3 +292,7 @@ def build_provider_filters(base: Optional[str], provider_map: Dict[str, str]) ->
         for p, c in provider_map.items()
         if c and c.strip()  # skip empty clauses
     }
+
+
+# output1 = get_spg_filter_map(225, providers=DEFAULT_SPG_PROVIDERS)
+# pass
