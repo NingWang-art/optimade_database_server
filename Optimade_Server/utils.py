@@ -293,6 +293,5 @@ def build_provider_filters(base: Optional[str], provider_map: Dict[str, str]) ->
         if c and c.strip()  # skip empty clauses
     }
 
-
-# output1 = get_spg_filter_map(225, providers=DEFAULT_SPG_PROVIDERS)
-# pass
+# for i in range(1, 231):
+#     print(get_spg_filter_map(i, providers=DEFAULT_SPG_PROVIDERS))

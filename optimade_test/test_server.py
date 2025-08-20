@@ -19,24 +19,6 @@ BASE_OUTPUT_DIR = Path("materials_data")
 BASE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# === ARG PARSING ===
-def parse_args():
-    parser = argparse.ArgumentParser(description="OPTIMADE Materials Data MCP Server")
-    parser.add_argument('--port', type=int, default=50001, help='Server port (default: 50001)')
-    parser.add_argument('--host', default='0.0.0.0', help='Server host (default: 0.0.0.0)')
-    parser.add_argument('--log-level', default='INFO',
-                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-                        help='Logging level (default: INFO)')
-    try:
-        return parser.parse_args()
-    except SystemExit:
-        class Args:
-            port = 50001
-            host = '0.0.0.0'
-            log_level = 'INFO'
-        return Args()
-
-
 # === RESULT TYPE (what each tool returns) ===
 Format = Literal["cif", "json"]
 
@@ -44,14 +26,6 @@ class FetchResult(TypedDict):
     output_dir: Path            # folder where results are saved
 
 
-# === MCP SERVER ===
-args = parse_args()
-logging.basicConfig(level=args.log_level)
-mcp = CalculationMCPServer("OptimadeServer", port=args.port, host=args.host)
-
-
-# === TOOL 1: RAW OPTIMADE FILTER ===
-@mcp.tool()
 async def fetch_structures_with_filter(
     filter: str,
     as_format: Format = "cif",
@@ -137,8 +111,6 @@ async def fetch_structures_with_filter(
     return {"output_dir": out_folder}
 
 
-# === TOOL 2: SPACE-GROUP AWARE FETCH (provider-specific fields, parallel) ===
-@mcp.tool()
 async def fetch_structures_with_spg(
     base_filter: Optional[str],
     spg_number: int,
@@ -245,9 +217,6 @@ async def fetch_structures_with_spg(
 
     return {"output_dir": out_folder}
 
-
-# === TOOL 3: BAND‑GAP RANGE FETCH (provider-specific fields, parallel) ===
-@mcp.tool()
 async def fetch_structures_with_bandgap(
     base_filter: Optional[str],
     min_bg: Optional[float] = None,
@@ -356,7 +325,52 @@ async def fetch_structures_with_bandgap(
     return {"output_dir": out_folder}
 
 
-# === RUN MCP SERVER ===
+async def main():
+    """Demo function to test all three OPTIMADE functions."""
+    print("🚀 Testing OPTIMADE Database Functions")
+    print("=" * 50)
+    
+    # Test 1: fetch_structures_with_filter
+    print("\n1. Testing fetch_structures_with_filter...")
+    try:
+        result1 = await fetch_structures_with_filter(
+            filter='elements HAS ONLY "Si","O"',
+            as_format="cif",
+            n_results=2
+        )
+        print(f"✅ Filter test completed. Output: {result1['output_dir']}")
+    except Exception as e:
+        print(f"❌ Filter test failed: {e}")
+    
+    # # Test 2: fetch_structures_with_spg
+    # print("\n2. Testing fetch_structures_with_spg...")
+    # try:
+    #     result2 = await fetch_structures_with_spg(
+    #         base_filter='elements HAS ANY "Si"',
+    #         spg_number=227,  # diamond cubic
+    #         as_format="cif",
+    #         n_results=2
+    #     )
+    #     print(f"✅ Space group test completed. Output: {result2['output_dir']}")
+    # except Exception as e:
+    #     print(f"❌ Space group test failed: {e}")
+    
+    # # Test 3: fetch_structures_with_bandgap
+    # print("\n3. Testing fetch_structures_with_bandgap...")
+    # try:
+    #     result3 = await fetch_structures_with_bandgap(
+    #         base_filter='elements HAS ANY "Si"',
+    #         min_bg=1.0,
+    #         max_bg=2.0,
+    #         as_format="cif",
+    #         n_results=2
+    #     )
+    #     print(f"✅ Bandgap test completed. Output: {result3['output_dir']}")
+    # except Exception as e:
+    #     print(f"❌ Bandgap test failed: {e}")
+    
+    print("\n🎉 All tests completed! Check the 'materials_data' directory for results.")
+
+
 if __name__ == "__main__":
-    logging.info("Starting Optimade MCP Server…")
-    mcp.run(transport="sse")
+    asyncio.run(main())

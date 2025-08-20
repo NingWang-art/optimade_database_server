@@ -42,7 +42,6 @@ Format = Literal["cif", "json"]
 
 class FetchResult(TypedDict):
     output_dir: Path            # folder where results are saved
-    files: List[str]            # list of saved file paths (strings)
 
 
 # === MCP SERVER ===
@@ -87,7 +86,6 @@ async def fetch_structures_with_filter(
     -------
     FetchResult
         output_dir: Path to the folder with saved results
-        files: list of saved file paths
     """
     filt = (filter or "").strip()
     if not filt:
@@ -130,7 +128,7 @@ async def fetch_structures_with_filter(
     }
     (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
 
-    return {"output_dir": out_folder, "files": files}
+    return {"output_dir": out_folder}
 
 
 # === TOOL 2: SPACE-GROUP AWARE FETCH (provider-specific fields, parallel) ===
@@ -157,7 +155,7 @@ async def fetch_structures_with_spg(
     base_filter : str | None
         Common OPTIMADE filter applied to all providers (e.g., "elements HAS ONLY \"Ti\",\"Al\"").
     spg_number : int
-        International space-group number (1–230).
+        International space-group number (1-230).
     as_format : {"cif","json"}
         Output format for saved structures (default "cif").
     n_results : int
@@ -169,7 +167,6 @@ async def fetch_structures_with_spg(
     -------
     FetchResult
         output_dir: Path to the folder with saved results
-        files: list of saved file paths
     """
     base = (base_filter or "").strip()
     used = set(providers) if providers else DEFAULT_SPG_PROVIDERS
@@ -240,7 +237,7 @@ async def fetch_structures_with_spg(
     }
     (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
 
-    return {"output_dir": out_folder, "files": all_files}
+    return {"output_dir": out_folder}
 
 
 # === TOOL 3: BAND‑GAP RANGE FETCH (provider-specific fields, parallel) ===
@@ -280,7 +277,6 @@ async def fetch_structures_with_bandgap(
     -------
     FetchResult
         output_dir: Path to the folder with saved results
-        files: list of saved file paths
     """
     base = (base_filter or "").strip()
     used = set(providers) if providers else DEFAULT_BG_PROVIDERS
@@ -351,7 +347,7 @@ async def fetch_structures_with_bandgap(
     }
     (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
 
-    return {"output_dir": out_folder, "files": all_files}
+    return {"output_dir": out_folder}
 
 
 # === RUN MCP SERVER ===
