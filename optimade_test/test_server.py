@@ -159,8 +159,14 @@ async def fetch_structures_with_spg(
     async def _query_one(provider: str, clause: str) -> dict:
         logging.info(f"[spg] {provider}: {clause}")
         try:
+            # Get all URLs for this provider (flatten the lists)
+            provider_urls = [url for url in URLS_FROM_PROVIDERS.get(provider, [])]
+            if not provider_urls:
+                logging.warning(f"[spg] No URLs found for provider {provider}")
+                return {"structures": {}}
+                
             client = OptimadeClient(
-                include_providers={provider},
+                base_urls=provider_urls,
                 max_results_per_provider=n_results,
                 http_timeout=25.0,
             )
@@ -267,8 +273,14 @@ async def fetch_structures_with_bandgap(
     async def _query_one(provider: str, clause: str) -> dict:
         logging.info(f"[bandgap] {provider}: {clause}")
         try:
+            # Get all URLs for this provider (flatten the lists)
+            provider_urls = [url for url in URLS_FROM_PROVIDERS.get(provider, [])]
+            if not provider_urls:
+                logging.warning(f"[bandgap] No URLs found for provider {provider}")
+                return {"structures": {}}
+                
             client = OptimadeClient(
-                include_providers={provider},
+                base_urls=provider_urls,
                 max_results_per_provider=n_results,
                 http_timeout=25.0,
             )
@@ -342,32 +354,32 @@ async def main():
     except Exception as e:
         print(f"❌ Filter test failed: {e}")
     
-    # # Test 2: fetch_structures_with_spg
-    # print("\n2. Testing fetch_structures_with_spg...")
-    # try:
-    #     result2 = await fetch_structures_with_spg(
-    #         base_filter='elements HAS ANY "Si"',
-    #         spg_number=227,  # diamond cubic
-    #         as_format="cif",
-    #         n_results=2
-    #     )
-    #     print(f"✅ Space group test completed. Output: {result2['output_dir']}")
-    # except Exception as e:
-    #     print(f"❌ Space group test failed: {e}")
+    # Test 2: fetch_structures_with_spg
+    print("\n2. Testing fetch_structures_with_spg...")
+    try:
+        result2 = await fetch_structures_with_spg(
+            base_filter='elements HAS ANY "Si"',
+            spg_number=227,  # diamond cubic
+            as_format="cif",
+            n_results=2
+        )
+        print(f"✅ Space group test completed. Output: {result2['output_dir']}")
+    except Exception as e:
+        print(f"❌ Space group test failed: {e}")
     
-    # # Test 3: fetch_structures_with_bandgap
-    # print("\n3. Testing fetch_structures_with_bandgap...")
-    # try:
-    #     result3 = await fetch_structures_with_bandgap(
-    #         base_filter='elements HAS ANY "Si"',
-    #         min_bg=1.0,
-    #         max_bg=2.0,
-    #         as_format="cif",
-    #         n_results=2
-    #     )
-    #     print(f"✅ Bandgap test completed. Output: {result3['output_dir']}")
-    # except Exception as e:
-    #     print(f"❌ Bandgap test failed: {e}")
+    # Test 3: fetch_structures_with_bandgap
+    print("\n3. Testing fetch_structures_with_bandgap...")
+    try:
+        result3 = await fetch_structures_with_bandgap(
+            base_filter='elements HAS ANY "Si"',
+            min_bg=1.0,
+            max_bg=2.0,
+            as_format="cif",
+            n_results=2
+        )
+        print(f"✅ Bandgap test completed. Output: {result3['output_dir']}")
+    except Exception as e:
+        print(f"❌ Bandgap test failed: {e}")
     
     print("\n🎉 All tests completed! Check the 'materials_data' directory for results.")
 
