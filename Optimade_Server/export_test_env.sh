@@ -1,4 +1,3 @@
-
 export BOHRIUM_BOHRIUM_URL="https://bohrium.test.dp.tech"
 export BOHRIUM_TIEFBLUE_URL="https://tiefblue.test.dp.tech"
 export BOHRIUM_OPENAPI_URL="https://openapi.test.dp.tech"

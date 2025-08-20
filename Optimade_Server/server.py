@@ -93,11 +93,17 @@ async def fetch_structures_with_filter(
         return {"output_dir": Path(), "files": []}
 
     used_providers = set(providers) if providers else DEFAULT_PROVIDERS
-    logging.info(f"[raw] providers={used_providers} filter={filt}")
+    
+    # Get all URLs for the selected providers (flatten the lists)
+    used_urls = [url for provider in used_providers 
+                 for url in URLS_FROM_PROVIDERS.get(provider, [])]
+    
+    logging.info(f"[raw] providers={used_providers} urls={len(used_urls)} filter={filt}")
 
     try:
         client = OptimadeClient(
-            include_providers=used_providers,
+            base_urls=used_urls,
+            # include_providers=used_providers,
             max_results_per_provider=n_results,
             http_timeout=25.0,
         )
@@ -181,8 +187,14 @@ async def fetch_structures_with_spg(
     async def _query_one(provider: str, clause: str) -> dict:
         logging.info(f"[spg] {provider}: {clause}")
         try:
+            # Get all URLs for this provider (flatten the lists)
+            provider_urls = [url for url in URLS_FROM_PROVIDERS.get(provider, [])]
+            if not provider_urls:
+                logging.warning(f"[spg] No URLs found for provider {provider}")
+                return {"structures": {}}
+                
             client = OptimadeClient(
-                include_providers={provider},
+                base_urls=provider_urls,
                 max_results_per_provider=n_results,
                 http_timeout=25.0,
             )
@@ -292,8 +304,14 @@ async def fetch_structures_with_bandgap(
     async def _query_one(provider: str, clause: str) -> dict:
         logging.info(f"[bandgap] {provider}: {clause}")
         try:
+            # Get all URLs for this provider (flatten the lists)
+            provider_urls = [url for url in URLS_FROM_PROVIDERS.get(provider, [])]
+            if not provider_urls:
+                logging.warning(f"[bandgap] No URLs found for provider {provider}")
+                return {"structures": {}}
+                
             client = OptimadeClient(
-                include_providers={provider},
+                base_urls=provider_urls,
                 max_results_per_provider=n_results,
                 http_timeout=25.0,
             )

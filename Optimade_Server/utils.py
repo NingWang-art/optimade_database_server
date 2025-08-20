@@ -65,6 +65,49 @@ DEFAULT_BG_PROVIDERS = {
     "twodmatpedia",
 }
 
+URLS_FROM_PROVIDERS = {
+    "aflow": ["https://aflow.org/API/optimade/"],
+    "alexandria": [
+        "https://alexandria.icams.rub.de/pbe",
+        "https://alexandria.icams.rub.de/pbesol"
+    ],
+    "cod": ["https://www.crystallography.net/cod/optimade"],
+    "cmr": ["https://cmr-optimade.fysik.dtu.dk/"],
+    "mcloud": [
+        "https://optimade.materialscloud.io/main/mc3d-pbe-v1",
+        "https://optimade.materialscloud.io/main/mc2d",
+        "https://optimade.materialscloud.io/main/2dtopo",
+        "https://optimade.materialscloud.io/main/tc-applicability",
+        "https://optimade.materialscloud.io/main/pyrene-mofs",
+        "https://optimade.materialscloud.io/main/curated-cofs",
+        "https://optimade.materialscloud.io/main/stoceriaitf",
+        "https://optimade.materialscloud.io/main/autowannier",
+        "https://optimade.materialscloud.io/main/tin-antimony-sulfoiodide"
+    ],
+    "mcloudarchive": [
+        "https://optimade.materialscloud.org/archive/zk-gc",
+        "https://optimade.materialscloud.org/archive/c8-gy",
+        "https://optimade.materialscloud.org/archive/5p-vq",
+        "https://optimade.materialscloud.org/archive/vg-ya"
+    ],
+    "mp": ["https://optimade.materialsproject.org/"],
+    "mpdd": ["http://mpddoptimade.phaseslab.org/"],
+    "mpds": ["https://api.mpds.io/"],
+    "mpod": ["http://mpod_optimade.cimav.edu.mx/"],
+    "nmd": ["https://nomad-lab.eu/prod/rae/optimade/"],
+    "odbx": [
+        "https://optimade.odbx.science/",
+        "https://optimade-misc.odbx.science/",
+        "https://optimade-gnome.odbx.science/"
+    ],
+    "omdb": ["http://optimade.openmaterialsdb.se/"],
+    "oqmd": ["https://oqmd.org/optimade/"],
+    "jarvis": ["https://jarvis.nist.gov/optimade/jarvisdft"],
+    "tcod": ["https://www.crystallography.net/tcod/optimade"],
+    "twodmatpedia": ["http://optimade.2dmatpedia.org/"]
+}
+
+
 # === UTILS ===
 def hill_formula_filter(formula: str) -> str:
     hill_formula = Composition(formula).hill_formula.replace(' ', '')
@@ -293,5 +336,29 @@ def build_provider_filters(base: Optional[str], provider_map: Dict[str, str]) ->
         if c and c.strip()  # skip empty clauses
     }
 
-# for i in range(1, 231):
-#     print(get_spg_filter_map(i, providers=DEFAULT_SPG_PROVIDERS))
+
+def get_base_urls() -> List[str]:
+
+    try:
+        from optimade.utils import get_all_databases
+
+        base_urls = list(get_all_databases())
+        return base_urls
+
+    except ImportError:
+        print("Warning: optimade.utils not available")
+        return []
+    except Exception as e:
+        print(f"Error getting base URLs: {e}")
+        return []
+
+
+if __name__ == "__main__":
+    urls = get_base_urls()
+    print(urls)
+    print(len(urls))
+
+
+
+# output1 = get_spg_filter_map(225, providers=DEFAULT_SPG_PROVIDERS)
+# pass

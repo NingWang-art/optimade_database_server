@@ -82,11 +82,11 @@ root_agent = LlmAgent(
     ),
     instruction=(
         "You can call three MCP tools exposed by the server:\n"
-        "1) fetch_structures_with_filter(filter, as_format='cif'|'json', max_results_per_provider=2, providers=[...])\n"
+        "1) fetch_structures_with_filter(filter, as_format='cif'|'json', n_results=2, providers=[...])\n"
         "   - Sends ONE raw OPTIMADE filter string to all chosen providers at once.\n"
-        "2) fetch_structures_with_spg(base_filter, spg_number, as_format='cif'|'json', max_results_per_provider=3, providers=[...])\n"
+        "2) fetch_structures_with_spg(base_filter, spg_number, as_format='cif'|'json', n_results=3, providers=[...])\n"
         "   - Adds provider-specific *space-group* clauses (e.g., _tcod_sg, _oqmd_spacegroup, _alexandria_space_group) and queries providers in parallel.\n"
-        "3) fetch_structures_with_bandgap(base_filter, min_bg=None, max_bg=None, as_format='cif'|'json', max_results_per_provider=2, providers=[...])\n"
+        "3) fetch_structures_with_bandgap(base_filter, min_bg=None, max_bg=None, as_format='cif'|'json', n_results=2, providers=[...])\n"
         "   - Adds provider-specific *band-gap* clauses (e.g., _oqmd_band_gap, _gnome_bandgap, _mcloudarchive_band_gap) and queries in parallel.\n\n"
         "   - For band-gap related tasks, **use 'json' as the default as_format** to include complete metadata.\n\n"
 
@@ -113,7 +113,7 @@ root_agent = LlmAgent(
         "   → Tool: fetch_structures_with_filter\n"
         "     filter: elements HAS ALL \"Si\",\"O\" AND nelements=4 AND NOT (elements HAS ALL \"Fe\",\"Al\")\n"
         "     as_format: \"cif\"\n"
-        "     max_results_per_provider: 3\n"
+        "     n_results: 3\n"
         "     providers: [\"alexandria\",\"cmr\",\"nmd\",\"oqmd\",\"omdb\"]\n\n"
 
         "2) 用户：找到一些A2b3C4的材料，不能含有 Fe，F，CI，H元素，要含有铝或者镁或者钠，我要全部信息。\n"
@@ -127,11 +127,12 @@ root_agent = LlmAgent(
         "     as_format: \"cif\"\n"
         "     providers: [\"mpds\",\"cmr\",\"alexandria\",\"omdb\",\"odbx\"]\n\n"
 
-        "4) 用户：查找gamma相的TiAl合金\n"
+        "4) 用户：查找一个gamma相的TiAl合金\n"
         "   → Tool: fetch_structures_with_spg\n"
         "     base_filter: elements HAS ONLY \"Ti\",\"Al\"\n"
         "     spg_number: 123   # γ‑TiAl (L1₀) 常记作 P4/mmm，为 123空间群；你需要根据相结构信息确定空间群序号\n"
         "     as_format: \"cif\"\n"
+        "     n_results: 1\n"
 
         "5) 用户：找一些含铝的，能带在1.0-2.0间的材料\n"
         "   → Tool: fetch_structures_with_bandgap\n"
@@ -142,7 +143,7 @@ root_agent = LlmAgent(
 
         "=== ANSWER STYLE ===\n"
         "- Briefly explain the applied constraints (elements/formula + SPG/BG if any).\n"
-        "- Provide the archive/folder path and list of files when available.\n"
+        "- Provide the archive/folder path.\n"
     ),
     tools=[mcp_tools],
 )
