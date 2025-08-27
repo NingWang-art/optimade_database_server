@@ -24,6 +24,7 @@ Format = Literal["cif", "json"]
 
 class FetchResult(TypedDict):
     output_dir: Path            # folder where results are saved
+    cleaned_structures: List[dict] # list of cleaned structures
 
 
 async def fetch_structures_with_filter(
@@ -65,6 +66,7 @@ async def fetch_structures_with_filter(
     if not filt:
         logging.error("[raw] empty filter string")
         return {"output_dir": Path(), "files": []}
+    filt = normalize_cfr_in_filter(filt)
 
     used_providers = set(providers) if providers else DEFAULT_PROVIDERS
     
@@ -92,7 +94,7 @@ async def fetch_structures_with_filter(
     short = hashlib.sha1(filt.encode("utf-8")).hexdigest()[:8]
     out_folder = BASE_OUTPUT_DIR / f"{tag}_{ts}_{short}"
 
-    files, warns, providers_seen = await to_thread.run_sync(
+    files, warns, providers_seen, cleaned_structures = await to_thread.run_sync(
         save_structures, results, out_folder, n_results, as_format == "cif"
     )
 
@@ -108,7 +110,10 @@ async def fetch_structures_with_filter(
     }
     (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
 
-    return {"output_dir": out_folder}
+    return {
+        "output_dir": out_folder,
+        "cleaned_structures": cleaned_structures,
+    }
 
 
 async def fetch_structures_with_spg(
@@ -147,6 +152,7 @@ async def fetch_structures_with_spg(
         output_dir: Path to the folder with saved results
     """
     base = (base_filter or "").strip()
+    base = normalize_cfr_in_filter(base)
     used = set(providers) if providers else DEFAULT_SPG_PROVIDERS
 
     # Build provider-specific SPG clauses and combine with base filter
@@ -260,6 +266,7 @@ async def fetch_structures_with_bandgap(
         output_dir: Path to the folder with saved results
     """
     base = (base_filter or "").strip()
+    base = normalize_cfr_in_filter(base)
     used = set(providers) if providers else DEFAULT_BG_PROVIDERS
 
     # Build per-provider bandgap clause and combine with base
@@ -344,44 +351,43 @@ async def main():
     
     # Test 1: fetch_structures_with_filter
     print("\n1. Testing fetch_structures_with_filter...")
-    try:
-        result1 = await fetch_structures_with_filter(
-            filter='elements HAS ONLY "Si","O"',
-            as_format="cif",
-            n_results=2
-        )
-        print(f"✅ Filter test completed. Output: {result1['output_dir']}")
-    except Exception as e:
-        print(f"❌ Filter test failed: {e}")
+    result1 = await fetch_structures_with_filter(
+        filter='elements HAS ALL "Fe"',
+        as_format="cif",
+        n_results=1,
+    )
+    print(f"✅ Filter test completed. Output: {result1['output_dir']}")
+
+    # # Test 2: fetch_structures_with_spg
+    # print("\n2. Testing fetch_structures_with_spg...")
+    # try:
+    #     result2 = await fetch_structures_with_spg(
+    #         base_filter='elements HAS ANY "Si"',
+    #         spg_number=227,  # diamond cubic
+    #         as_format="cif",
+    #         n_results=2
+    #     )
+    #     print(f"✅ Space group test completed. Output: {result2['output_dir']}")
+    # except Exception as e:
+    #     print(f"❌ Space group test failed: {e}")
     
-    # Test 2: fetch_structures_with_spg
-    print("\n2. Testing fetch_structures_with_spg...")
-    try:
-        result2 = await fetch_structures_with_spg(
-            base_filter='elements HAS ANY "Si"',
-            spg_number=227,  # diamond cubic
-            as_format="cif",
-            n_results=2
-        )
-        print(f"✅ Space group test completed. Output: {result2['output_dir']}")
-    except Exception as e:
-        print(f"❌ Space group test failed: {e}")
-    
-    # Test 3: fetch_structures_with_bandgap
-    print("\n3. Testing fetch_structures_with_bandgap...")
-    try:
-        result3 = await fetch_structures_with_bandgap(
-            base_filter='elements HAS ANY "Si"',
-            min_bg=1.0,
-            max_bg=2.0,
-            as_format="cif",
-            n_results=2
-        )
-        print(f"✅ Bandgap test completed. Output: {result3['output_dir']}")
-    except Exception as e:
-        print(f"❌ Bandgap test failed: {e}")
+    # # Test 3: fetch_structures_with_bandgap
+    # print("\n3. Testing fetch_structures_with_bandgap...")
+    # try:
+    #     result3 = await fetch_structures_with_bandgap(
+    #         base_filter='elements HAS ANY "Si"',
+    #         min_bg=1.0,
+    #         max_bg=2.0,
+    #         as_format="cif",
+    #         n_results=2
+    #     )
+    #     print(f"✅ Bandgap test completed. Output: {result3['output_dir']}")
+    # except Exception as e:
+    #     print(f"❌ Bandgap test failed: {e}")
     
     print("\n🎉 All tests completed! Check the 'materials_data' directory for results.")
+
+# 'chemical_formula_reduced IN ["O2Si","Al2O3"]'
 
 
 if __name__ == "__main__":
