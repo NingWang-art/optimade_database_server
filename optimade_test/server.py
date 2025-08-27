@@ -42,6 +42,7 @@ Format = Literal["cif", "json"]
 
 class FetchResult(TypedDict):
     output_dir: Path            # folder where results are saved
+    cleaned_structures: List[dict] # list of cleaned structures
 
 
 # === MCP SERVER ===
@@ -91,6 +92,7 @@ async def fetch_structures_with_filter(
     if not filt:
         logging.error("[raw] empty filter string")
         return {"output_dir": Path(), "files": []}
+    filt = normalize_cfr_in_filter(filt)
 
     used_providers = set(providers) if providers else DEFAULT_PROVIDERS
     
@@ -118,7 +120,7 @@ async def fetch_structures_with_filter(
     short = hashlib.sha1(filt.encode("utf-8")).hexdigest()[:8]
     out_folder = BASE_OUTPUT_DIR / f"{tag}_{ts}_{short}"
 
-    files, warns, providers_seen = await to_thread.run_sync(
+    files, warns, providers_seen, cleaned_structures = await to_thread.run_sync(
         save_structures, results, out_folder, n_results, as_format == "cif"
     )
 
@@ -134,7 +136,10 @@ async def fetch_structures_with_filter(
     }
     (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
 
-    return {"output_dir": out_folder}
+    return {
+        "output_dir": out_folder,
+        "cleaned_structures": cleaned_structures,
+    }
 
 
 # === TOOL 2: SPACE-GROUP AWARE FETCH (provider-specific fields, parallel) ===
@@ -175,6 +180,7 @@ async def fetch_structures_with_spg(
         output_dir: Path to the folder with saved results
     """
     base = (base_filter or "").strip()
+    base = normalize_cfr_in_filter(base)
     used = set(providers) if providers else DEFAULT_SPG_PROVIDERS
 
     # Build provider-specific SPG clauses and combine with base filter
@@ -291,6 +297,7 @@ async def fetch_structures_with_bandgap(
         output_dir: Path to the folder with saved results
     """
     base = (base_filter or "").strip()
+    base = normalize_cfr_in_filter(base)
     used = set(providers) if providers else DEFAULT_BG_PROVIDERS
 
     # Build per-provider bandgap clause and combine with base
