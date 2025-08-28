@@ -173,6 +173,26 @@ def _provider_name_from_url(url: str) -> str:
     name = f"{netloc}_{path}" if path else netloc
     return name.strip('_') or "provider"
 
+def shorten_id(orig_id: str, head: int = 6, tail: int = 3, min_len: int = 12) -> str:
+    """
+    Shorten a long ID for display.
+
+    Args:
+        orig_id: the original string ID
+        head: number of characters to keep at the start
+        tail: number of characters to keep at the end
+        min_len: minimum length before shortening is applied
+
+    Returns:
+        A shortened ID string like 'abcdef...xyz' if longer than min_len,
+        otherwise the original ID unchanged.
+    """
+    if not orig_id:
+        return orig_id
+    if len(orig_id) > min_len:
+        return f"{orig_id[:head]}...{orig_id[-tail:]}"
+    return orig_id
+
 def save_structures(results: Dict, output_folder: Path, max_results: int, as_cif: bool):
     """
     Walk OPTIMADE aggregated results and write per-provider files.
@@ -228,7 +248,12 @@ def save_structures(results: Dict, output_folder: Path, max_results: int, as_cif
                     attrs.pop(k, None)
                 sd["attributes"] = attrs
                 sd["provider_url"] = provider_url
+                # overwrite id with short display form (first 6 + '...' + last 3)
+                orig_id = str(sd.get("id", ""))
+                sd["id"] = shorten_id(orig_id, head=6, tail=3, min_len=12)
+
                 cleaned_structures.append(sd)
+                
             except Exception as e:
                 logging.warning(f"[save] clean-copy failed for {provider_name} #{i}: {e}")
 

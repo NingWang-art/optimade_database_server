@@ -4,8 +4,7 @@ import logging
 import json
 from pathlib import Path
 from typing import List, Dict, Iterable, Optional
-from optimade.adapters.structures import Structure
-from pymatgen.core import Composition
+from pymatgen.core import Composition, Structure
 from pymatgen.symmetry.groups import SpaceGroup
 
 import re
@@ -107,11 +106,41 @@ URLS_FROM_PROVIDERS = {
     "twodmatpedia": ["http://optimade.2dmatpedia.org/"]
 }
 
+DROP_ATTRS = {
+    "cartesian_site_positions",
+    "species_at_sites",
+    "species",
+    "_alexandria_charges",
+    "_alexandria_magnetic_moments",
+    "_alexandria_forces",
+    "_alexandria_scan_forces",
+    "_alexandria_scan_charges",
+    "_alexandria_scan_magnetic_moments",
+    "_nmd_dft_quantities",
+    "_nmd_files",
+    "_nmd_dft_geometries",
+    "_mpdd_descriptors",
+    "_mpdd_poscar",
+}
 
 # === UTILS ===
 def hill_formula_filter(formula: str) -> str:
     hill_formula = Composition(formula).hill_formula.replace(' ', '')
     return f'chemical_formula_reduced="{hill_formula}"'
+
+# regex for chemical_formula_reduced="..."/'...'
+_CFR_EQ = re.compile(r'(?i)\bchemical_formula_reduced\b\s*=\s*([\'"])(.+?)\1')
+
+def normalize_cfr_in_filter(filter_str: str) -> str:
+    """Normalize all chemical_formula_reduced=... clauses (0, 1, many)."""
+    if not filter_str:
+        return filter_str
+
+    def repl(m):
+        raw = m.group(2)  # the formula
+        return hill_formula_filter(raw)
+
+    return _CFR_EQ.sub(repl, filter_str)
 
 
 # def upload_file_to_oss(file_path: Path) -> str:
@@ -144,6 +173,26 @@ def _provider_name_from_url(url: str) -> str:
     name = f"{netloc}_{path}" if path else netloc
     return name.strip('_') or "provider"
 
+def shorten_id(orig_id: str, head: int = 6, tail: int = 3, min_len: int = 12) -> str:
+    """
+    Shorten a long ID for display.
+
+    Args:
+        orig_id: the original string ID
+        head: number of characters to keep at the start
+        tail: number of characters to keep at the end
+        min_len: minimum length before shortening is applied
+
+    Returns:
+        A shortened ID string like 'abcdef...xyz' if longer than min_len,
+        otherwise the original ID unchanged.
+    """
+    if not orig_id:
+        return orig_id
+    if len(orig_id) > min_len:
+        return f"{orig_id[:head]}...{orig_id[-tail:]}"
+    return orig_id
+
 def save_structures(results: Dict, output_folder: Path, max_results: int, as_cif: bool):
     """
     Walk OPTIMADE aggregated results and write per-provider files.
@@ -153,37 +202,62 @@ def save_structures(results: Dict, output_folder: Path, max_results: int, as_cif
     files: List[str] = []
     warnings: List[str] = []
     providers_seen: List[str] = []
+    cleaned_structures: List[dict] = []
 
     structures_by_filter = results.get("structures", {})
-    for _, provider_dict in structures_by_filter.items():
-        for provider_url, content in provider_dict.items():
-            provider_name = _provider_name_from_url(provider_url)
-            providers_seen.append(provider_name)
-            data_list = content.get("data", [])
-            logging.info(f"[save] {provider_name}: {len(data_list)} candidates")
+    structures_by_url = list(structures_by_filter.values())[0]
+    for provider_url, content in structures_by_url.items():
+        provider_name = _provider_name_from_url(provider_url)
+        providers_seen.append(provider_name)
+        data_list = content.get("data", [])
+        logging.info(f"[save] {provider_name}: {len(data_list)} candidates")
 
-            for i, structure_data in enumerate(data_list[:max_results]):
-                suffix = "cif" if as_cif else "json"
-                filename = f"{provider_name}_{i}.{suffix}"
-                file_path = output_folder / filename
+        for i, structure_data in enumerate(data_list[:max_results]):
+            # ---------- file write ----------
+            prefix = str(structure_data['id'])
+            suffix = "cif" if as_cif else "json"
+            filename = f"{provider_name}_{prefix}_{i}.{suffix}"
+            file_path = output_folder / filename
 
-                try:
-                    if as_cif:
-                        cif_content = Structure(structure_data).convert('cif')
-                        if not cif_content or not cif_content.strip():
-                            raise ValueError("CIF content is empty")
-                        file_path.write_text(cif_content)
-                    else:
-                        file_path.write_text(json.dumps(structure_data, indent=2))
+            try:
+                if as_cif:
+                    cif_content = Structure(
+                        lattice=structure_data['attributes']['lattice_vectors'], 
+                        species=structure_data['attributes']['species_at_sites'], 
+                        coords=structure_data['attributes']['cartesian_site_positions'], 
+                        coords_are_cartesian=True,
+                    ).to(fmt='cif')
+                    if not cif_content or not cif_content.strip():
+                        raise ValueError("CIF content is empty")
+                    file_path.write_text(cif_content)
+                else:
+                    file_path.write_text(json.dumps(structure_data, indent=2))
 
-                    logging.debug(f"[save] wrote {file_path}")
-                    files.append(str(file_path))
-                except Exception as e:
-                    msg = f"Failed to save structure from {provider_name} #{i}: {e}"
-                    logging.warning(msg)
-                    warnings.append(msg)
+                logging.debug(f"[save] wrote {file_path}")
+                files.append(str(file_path))
+            except Exception as e:
+                msg = f"Failed to save structure from {provider_name} #{i}: {e}"
+                logging.warning(msg)
+                warnings.append(msg)
 
-    return files, warnings, providers_seen
+            # ---------- cleaned copy ----------
+            try:
+                sd = dict(structure_data)
+                attrs = dict(sd.get("attributes", {}) or {})
+                for k in DROP_ATTRS:
+                    attrs.pop(k, None)
+                sd["attributes"] = attrs
+                sd["provider_url"] = provider_url
+                # overwrite id with short display form (first 6 + '...' + last 3)
+                orig_id = str(sd.get("id", ""))
+                sd["id"] = shorten_id(orig_id, head=6, tail=3, min_len=12)
+
+                cleaned_structures.append(sd)
+                
+            except Exception as e:
+                logging.warning(f"[save] clean-copy failed for {provider_name} #{i}: {e}")
+
+    return files, warnings, providers_seen, cleaned_structures
 
 
 def filter_to_tag(filter_str: str, max_len: int = 30) -> str:
@@ -360,5 +434,24 @@ if __name__ == "__main__":
 
 
 
-# output1 = get_spg_filter_map(225, providers=DEFAULT_SPG_PROVIDERS)
-# pass
+    # # 0 occurrence
+    # f0 = 'elements HAS ANY "Si","O"'
+    # print(normalize_cfr_in_filter(f0))
+    # # -> elements HAS ANY "Si","O"
+
+    # # 1 occurrence
+    # f1 = 'chemical_formula_reduced="SiO2"'
+    # print(normalize_cfr_in_filter(f1))
+    # # -> chemical_formula_reduced="O2Si"
+
+    # # 2 occurrences
+    # f2 = '(chemical_formula_reduced="SiO2" OR chemical_formula_reduced="Al2O3")'
+    # print(normalize_cfr_in_filter(f2))
+    # # -> (chemical_formula_reduced="O2Si" OR chemical_formula_reduced="Al2O3")
+
+    # # 4 occurrences
+    # f4 = ('(chemical_formula_reduced="SiO2" OR chemical_formula_reduced="Al2O3") '
+    #     'AND (chemical_formula_reduced="MgO" OR chemical_formula_reduced="NaCl")')
+    # print(normalize_cfr_in_filter(f4))
+    # # -> (chemical_formula_reduced="O2Si" OR chemical_formula_reduced="Al2O3") 
+    # #    AND (chemical_formula_reduced="MgO" OR chemical_formula_reduced="ClNa")

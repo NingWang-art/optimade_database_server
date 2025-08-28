@@ -18,6 +18,7 @@ from utils import *
 BASE_OUTPUT_DIR = Path("materials_data")
 BASE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+MAX_RETURNED_STRUCTS = 100
 
 # === ARG PARSING ===
 def parse_args():
@@ -41,7 +42,9 @@ def parse_args():
 Format = Literal["cif", "json"]
 
 class FetchResult(TypedDict):
-    output_dir: Path            # folder where results are saved
+    output_dir: Path             # folder where results are saved
+    cleaned_structures: List[dict]  # list of cleaned structures
+    found: bool                  # True if at least one structure was found
 
 
 # === MCP SERVER ===
@@ -86,11 +89,14 @@ async def fetch_structures_with_filter(
     -------
     FetchResult
         output_dir: Path to the folder with saved results
+        cleaned_structures: List[dict] # list of cleaned structures
+        found: bool  # True if any structures were retrieved, else False
     """
     filt = (filter or "").strip()
     if not filt:
         logging.error("[raw] empty filter string")
-        return {"output_dir": Path(), "files": []}
+        return {"output_dir": Path(), "cleaned_structures": [], "found": False}
+    filt = normalize_cfr_in_filter(filt)
 
     used_providers = set(providers) if providers else DEFAULT_PROVIDERS
     
@@ -110,7 +116,7 @@ async def fetch_structures_with_filter(
         results = await to_thread.run_sync(lambda: client.get(filter=filt))
     except (SystemExit, Exception) as e:  # catch SystemExit too
         logging.error(f"[raw] fetch failed: {e}")
-        return {"output_dir": Path(), "files": []}
+        return {"output_dir": Path(), "cleaned_structures": [], "found": False}
 
     # Timestamped folder + short hash of filter for traceability
     tag = filter_to_tag(filt)
@@ -118,7 +124,7 @@ async def fetch_structures_with_filter(
     short = hashlib.sha1(filt.encode("utf-8")).hexdigest()[:8]
     out_folder = BASE_OUTPUT_DIR / f"{tag}_{ts}_{short}"
 
-    files, warns, providers_seen = await to_thread.run_sync(
+    files, warns, providers_seen, cleaned_structures = await to_thread.run_sync(
         save_structures, results, out_folder, n_results, as_format == "cif"
     )
 
@@ -134,7 +140,13 @@ async def fetch_structures_with_filter(
     }
     (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
 
-    return {"output_dir": out_folder}
+    cleaned_structures = cleaned_structures[:MAX_RETURNED_STRUCTS]
+
+    return {
+        "output_dir": out_folder,
+        "cleaned_structures": cleaned_structures,
+        "found": bool(cleaned_structures),
+    }
 
 
 # === TOOL 2: SPACE-GROUP AWARE FETCH (provider-specific fields, parallel) ===
@@ -173,8 +185,11 @@ async def fetch_structures_with_spg(
     -------
     FetchResult
         output_dir: Path to the folder with saved results
+        cleaned_structures: List[dict] # list of cleaned structures
+        found: bool  # True if any structures were retrieved, else False
     """
     base = (base_filter or "").strip()
+    base = normalize_cfr_in_filter(base)
     used = set(providers) if providers else DEFAULT_SPG_PROVIDERS
 
     # Build provider-specific SPG clauses and combine with base filter
@@ -182,7 +197,7 @@ async def fetch_structures_with_spg(
     filters = build_provider_filters(base, spg_map)
     if not filters:
         logging.warning("[spg] no provider-specific space-group clause available")
-        return {"output_dir": Path(), "files": []}
+        return {"output_dir": Path(), "cleaned_structures": [], "found": False}
 
     async def _query_one(provider: str, clause: str) -> dict:
         logging.info(f"[spg] {provider}: {clause}")
@@ -227,13 +242,15 @@ async def fetch_structures_with_spg(
     all_files: List[str] = []
     all_warnings: List[str] = []
     all_providers: List[str] = []
+    all_cleaned: List[dict] = []
     for res in norm_results:
-        files, warns, providers_seen = await to_thread.run_sync(
+        files, warns, providers_seen, cleaned = await to_thread.run_sync(
             save_structures, res, out_folder, n_results, as_format == "cif"
         )
         all_files.extend(files)
         all_warnings.extend(warns)
         all_providers.extend(providers_seen)
+        all_cleaned.extend(cleaned)
 
     manifest = {
         "mode": "space_group",
@@ -249,7 +266,13 @@ async def fetch_structures_with_spg(
     }
     (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
 
-    return {"output_dir": out_folder}
+    all_cleaned = all_cleaned[:MAX_RETURNED_STRUCTS]
+
+    return {
+        "output_dir": out_folder,
+        "cleaned_structures": all_cleaned,
+        "found": bool(all_cleaned),
+    }
 
 
 # === TOOL 3: BAND‑GAP RANGE FETCH (provider-specific fields, parallel) ===
@@ -289,8 +312,11 @@ async def fetch_structures_with_bandgap(
     -------
     FetchResult
         output_dir: Path to the folder with saved results
+        cleaned_structures: List[dict] # list of cleaned structures
+        found: bool  # True if any structures were retrieved, else False
     """
     base = (base_filter or "").strip()
+    base = normalize_cfr_in_filter(base)
     used = set(providers) if providers else DEFAULT_BG_PROVIDERS
 
     # Build per-provider bandgap clause and combine with base
@@ -299,7 +325,7 @@ async def fetch_structures_with_bandgap(
 
     if not filters:
         logging.warning("[bandgap] no provider-specific band-gap clause available")
-        return {"output_dir": Path(), "files": []}
+        return {"output_dir": Path(), "cleaned_structures": [], "found": False}
 
     async def _query_one(provider: str, clause: str) -> dict:
         logging.info(f"[bandgap] {provider}: {clause}")
@@ -342,13 +368,15 @@ async def fetch_structures_with_bandgap(
     all_files: List[str] = []
     all_warnings: List[str] = []
     all_providers: List[str] = []
+    all_cleaned: List[dict] = []
     for res in norm_results:
-        files, warns, providers_seen = await to_thread.run_sync(
+        files, warns, providers_seen, cleaned = await to_thread.run_sync(
             save_structures, res, out_folder, n_results, as_format == "cif"
         )
         all_files.extend(files)
         all_warnings.extend(warns)
         all_providers.extend(providers_seen)
+        all_cleaned.extend(cleaned)
 
     manifest = {
         "mode": "band_gap",
@@ -365,7 +393,13 @@ async def fetch_structures_with_bandgap(
     }
     (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
 
-    return {"output_dir": out_folder}
+    all_cleaned = all_cleaned[:MAX_RETURNED_STRUCTS]
+
+    return {
+        "output_dir": out_folder,
+        "cleaned_structures": all_cleaned,
+        "found": bool(all_cleaned),
+    }
 
 
 # === RUN MCP SERVER ===
