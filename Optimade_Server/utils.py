@@ -110,6 +110,7 @@ DROP_ATTRS = {
     "cartesian_site_positions",
     "species_at_sites",
     "species",
+    "immutable_id",
     "_alexandria_charges",
     "_alexandria_magnetic_moments",
     "_alexandria_forces",
