@@ -205,6 +205,8 @@ def save_structures(results: Dict, output_folder: Path, max_results: int, as_cif
     providers_seen: List[str] = []
     cleaned_structures: List[dict] = []
 
+    seen_ids: set[str] = set()
+
     structures_by_filter = results.get("structures", {})
     structures_by_url = list(structures_by_filter.values())[0]
     for provider_url, content in structures_by_url.items():
@@ -213,11 +215,20 @@ def save_structures(results: Dict, output_folder: Path, max_results: int, as_cif
         data_list = content.get("data", [])
         logging.info(f"[save] {provider_name}: {len(data_list)} candidates")
 
-        for i, structure_data in enumerate(data_list[:max_results]):
+        saved = 0
+        for structure_data in data_list:
+            if saved >= max_results:
+                break
+
+            orig_id = str(structure_data.get("id", ""))
+            if orig_id in seen_ids:
+                logging.warning(f"[save] duplicate skipped: {orig_id}")
+                continue
+            seen_ids.add(orig_id)
+
             # ---------- file write ----------
-            prefix = str(structure_data['id'])
             suffix = "cif" if as_cif else "json"
-            filename = f"{provider_name}_{prefix}_{i}.{suffix}"
+            filename = f"{provider_name}_{orig_id}_{saved}.{suffix}"
             file_path = output_folder / filename
 
             try:
@@ -237,7 +248,7 @@ def save_structures(results: Dict, output_folder: Path, max_results: int, as_cif
                 logging.debug(f"[save] wrote {file_path}")
                 files.append(str(file_path))
             except Exception as e:
-                msg = f"Failed to save structure from {provider_name} #{i}: {e}"
+                msg = f"Failed to save structure from {provider_name} #{orig_id}: {e}"
                 logging.warning(msg)
                 warnings.append(msg)
 
@@ -249,14 +260,16 @@ def save_structures(results: Dict, output_folder: Path, max_results: int, as_cif
                     attrs.pop(k, None)
                 sd["attributes"] = attrs
                 sd["provider_url"] = provider_url
-                # overwrite id with short display form (first 6 + '...' + last 3)
-                orig_id = str(sd.get("id", ""))
-                sd["id"] = shorten_id(orig_id, head=6, tail=3, min_len=12)
+                # # overwrite id with short display form (first 6 + '...' + last 3)
+                # orig_id = str(sd.get("id", ""))
+                # sd["id"] = shorten_id(orig_id, head=6, tail=3, min_len=12)
 
                 cleaned_structures.append(sd)
                 
             except Exception as e:
-                logging.warning(f"[save] clean-copy failed for {provider_name} #{i}: {e}")
+                logging.warning(f"[save] clean-copy failed for {provider_name} #{orig_id}: {e}")
+
+            saved += 1
 
     return files, warnings, providers_seen, cleaned_structures
 

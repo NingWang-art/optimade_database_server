@@ -352,9 +352,9 @@ async def main():
     # Test 1: fetch_structures_with_filter
     print("\n1. Testing fetch_structures_with_filter...")
     result1 = await fetch_structures_with_filter(
-        filter='elements HAS ALL "Fe"',
+        filter='chemical_formula_reduced="MgO"',
         as_format="cif",
-        n_results=1,
+        n_results=10,
     )
     print(f"✅ Filter test completed. Output: {result1['output_dir']}")
 

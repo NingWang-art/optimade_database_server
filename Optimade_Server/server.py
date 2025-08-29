@@ -44,7 +44,7 @@ Format = Literal["cif", "json"]
 class FetchResult(TypedDict):
     output_dir: Path             # folder where results are saved
     cleaned_structures: List[dict]  # list of cleaned structures
-    found: bool                  # True if at least one structure was found
+    n_found: int                    # number of structures found (0 if none)
 
 
 # === MCP SERVER ===
@@ -89,13 +89,13 @@ async def fetch_structures_with_filter(
     -------
     FetchResult
         output_dir: Path to the folder with saved results
-        cleaned_structures: List[dict] # list of cleaned structures
-        found: bool  # True if any structures were retrieved, else False
+        cleaned_structures: List[dict]  # list of cleaned structures
+        n_found: int  # number of structures found (0 if none)
     """
     filt = (filter or "").strip()
     if not filt:
         logging.error("[raw] empty filter string")
-        return {"output_dir": Path(), "cleaned_structures": [], "found": False}
+        return {"output_dir": Path(), "cleaned_structures": [], "n_found": 0}
     filt = normalize_cfr_in_filter(filt)
 
     used_providers = set(providers) if providers else DEFAULT_PROVIDERS
@@ -116,7 +116,7 @@ async def fetch_structures_with_filter(
         results = await to_thread.run_sync(lambda: client.get(filter=filt))
     except (SystemExit, Exception) as e:  # catch SystemExit too
         logging.error(f"[raw] fetch failed: {e}")
-        return {"output_dir": Path(), "cleaned_structures": [], "found": False}
+        return {"output_dir": Path(), "cleaned_structures": [], "n_found": 0}
 
     # Timestamped folder + short hash of filter for traceability
     tag = filter_to_tag(filt)
@@ -137,6 +137,7 @@ async def fetch_structures_with_filter(
         "warnings": warns,
         "format": as_format,
         "n_results": n_results,
+        "n_found": len(cleaned_structures), 
     }
     (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
 
@@ -145,7 +146,7 @@ async def fetch_structures_with_filter(
     return {
         "output_dir": out_folder,
         "cleaned_structures": cleaned_structures,
-        "found": bool(cleaned_structures),
+        "n_found": len(cleaned_structures),
     }
 
 
@@ -185,8 +186,8 @@ async def fetch_structures_with_spg(
     -------
     FetchResult
         output_dir: Path to the folder with saved results
-        cleaned_structures: List[dict] # list of cleaned structures
-        found: bool  # True if any structures were retrieved, else False
+        cleaned_structures: List[dict]  # list of cleaned structures
+        n_found: int  # number of structures found (0 if none)
     """
     base = (base_filter or "").strip()
     base = normalize_cfr_in_filter(base)
@@ -197,7 +198,7 @@ async def fetch_structures_with_spg(
     filters = build_provider_filters(base, spg_map)
     if not filters:
         logging.warning("[spg] no provider-specific space-group clause available")
-        return {"output_dir": Path(), "cleaned_structures": [], "found": False}
+        return {"output_dir": Path(), "cleaned_structures": [], "n_found": 0}
 
     async def _query_one(provider: str, clause: str) -> dict:
         logging.info(f"[spg] {provider}: {clause}")
@@ -263,6 +264,7 @@ async def fetch_structures_with_spg(
         "format": as_format,
         "n_results": n_results,
         "per_provider_filters": filters,
+        "n_found": len(all_cleaned),
     }
     (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
 
@@ -271,7 +273,7 @@ async def fetch_structures_with_spg(
     return {
         "output_dir": out_folder,
         "cleaned_structures": all_cleaned,
-        "found": bool(all_cleaned),
+        "n_found": len(all_cleaned),
     }
 
 
@@ -312,8 +314,8 @@ async def fetch_structures_with_bandgap(
     -------
     FetchResult
         output_dir: Path to the folder with saved results
-        cleaned_structures: List[dict] # list of cleaned structures
-        found: bool  # True if any structures were retrieved, else False
+        cleaned_structures: List[dict]  # list of cleaned structures
+        n_found: int  # number of structures found (0 if none)
     """
     base = (base_filter or "").strip()
     base = normalize_cfr_in_filter(base)
@@ -325,7 +327,7 @@ async def fetch_structures_with_bandgap(
 
     if not filters:
         logging.warning("[bandgap] no provider-specific band-gap clause available")
-        return {"output_dir": Path(), "cleaned_structures": [], "found": False}
+        return {"output_dir": Path(), "cleaned_structures": [], "n_found": 0}
 
     async def _query_one(provider: str, clause: str) -> dict:
         logging.info(f"[bandgap] {provider}: {clause}")
@@ -390,6 +392,7 @@ async def fetch_structures_with_bandgap(
         "format": as_format,
         "n_results": n_results,
         "per_provider_filters": filters,
+        "n_found": len(all_cleaned),
     }
     (out_folder / "summary.json").write_text(json.dumps(manifest, indent=2))
 
@@ -398,7 +401,7 @@ async def fetch_structures_with_bandgap(
     return {
         "output_dir": out_folder,
         "cleaned_structures": all_cleaned,
-        "found": bool(all_cleaned),
+        "n_found": len(all_cleaned),
     }
 
 
